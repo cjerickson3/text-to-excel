@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Scripts
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# (Optional: be explicit for code/docs)
+*.py  text eol=lf
+*.md  text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
