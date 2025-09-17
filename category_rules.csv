@@ -1,0 +1,11 @@
+keyword,category,match_type,case_sensitive
+WAL-MART,Groceries,contains,0
+TST*,Food & drink,startswith,1
+PERSHING,401K transfer,contains,0
+ONLINE PAYMENT,Online payment,contains,0
+HOME DEPOT,Home Repair,contains,0
+LOWES,Home Repair,contains,0
+GOLF,Golf,contains,0
+WELLCARE,Health & wellness,contains,0
+CHIROPRACT,Health & wellness,contains,0
+KERA,Donations,contains,0
