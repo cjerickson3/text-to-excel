@@ -1,0 +1,43 @@
+# --- Python basics ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+
+# Jupyter / tooling
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Coverage / logs
+htmlcov/
+.coverage*
+*.log
+
+# Project-specific artifacts
+output/
+**/output/**
+# Data dumps (keep small redacted samples only)
+data/raw/
+**/History_text/**
+
+# Secrets (use .env.example to share keys schema)
+.env
+*.key
+*.pem
