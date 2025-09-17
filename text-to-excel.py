@@ -16,6 +16,7 @@ import sys
 import subprocess
 import argparse
 from pathlib import Path
+import shutil
 import pandas as pd
 def git_version():
     try:
@@ -1012,6 +1013,9 @@ def main():
     ap.add_argument("--rules", default=None, help="Category rules CSV (optional)")
     ap.add_argument("--debug", action="store_true", help="Verbose debug tracing")
     ap.add_argument("--force", action="store_true", help="Re-ingest even if this exact file was logged before")
+    ap.add_argument("--reset-dashboard", action="store_true", help="Copy template to dashboard before writing")
+    ap.add_argument("--dashboard-template", default="templates/Chase_Budget_Dashboard.xlsx")
+    ap.add_argument("--audit", action="store_true", help="Write audit workbook next to the dashboard")
     args = ap.parse_args()
 
     input_path     = Path(args.input)
@@ -1019,6 +1023,12 @@ def main():
     rules_path     = Path(args.rules) if args.rules else None
 
     # Open or create workbook
+    if args.reset_dashboard:
+        src = Path(args.dashboard_template)
+        dst = Path(args.dashboard)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        print(f"[reset] copied template → {dst}")
     wb = load_workbook(dashboard_path) if dashboard_path.exists() else Workbook()
     if "Sheet" in wb.sheetnames and len(wb.sheetnames) == 1 and wb.active.max_row <= 1:
         wb.remove(wb.active)
@@ -1245,7 +1255,7 @@ def main():
 
     # ---------------- SAVE & LOG ----------------
     #  Put audit_recon here?
-    if getattr(args, "audit", False):
+    if args.audit:
         try:
             from audit_recon import normalize, imbalance_summary
             df_norm = normalize(df)
@@ -1258,9 +1268,9 @@ def main():
                 report['pershing_issues'].to_excel(xw, 'Pershing_Check', index=False)
             if report['by_source_file'] is not None:
                 report['by_source_file'].to_excel(xw, 'By_Source_File', index=False)
-            print(f"[audit] wrote {audit_path}")
+            print(f"[args.audit] wrote {audit_path}")
         except Exception as e:
-            print(f"[audit] skipped due to error: {e}")
+            print(f"[args.audit] skipped due to error: {e}")
     wb.save(dashboard_path)
     append_ingest_log(log_ws, dashboard_path, sig, len(df), total_added)
 

@@ -35,6 +35,10 @@ def normalize(df):
     out['sign'] = out['amount'].apply(lambda x: 1 if x>0 else (-1 if x<0 else 0))
     out['y'] = out['date'].dt.year
     out['m'] = out['date'].dt.month
+    if 'category' not in out.columns:
+        out['category'] = ''
+    if 'subcategory' not in out.columns:
+        out['subcategory'] = ''
     return out
 
 def imbalance_summary(df_norm):
@@ -60,9 +64,12 @@ def imbalance_summary(df_norm):
         has_dep_word = df_norm['desc'].str.lower().str.contains('|'.join(dep_words)),
         has_wd_word  = df_norm['desc'].str.lower().str.contains('|'.join(wd_words)),
     )
-    sign_anom = sign_flags.query('(has_dep_word and amount<0) or (has_wd_word and amount>0)') \
-                          [['date','amount','desc','category','subcategory']]
-
+    # NEW: pick only available columns (subcategory is optional)
+    cols = ['date', 'amount', 'desc'] + [c for c in ('category','subcategory') if c in df_norm.columns]
+    sign_anom = sign_flags.query(
+        '(has_dep_word and amount<0) or (has_wd_word and amount>0)'
+    )[cols]
+    
     # 3) Near-duplicates (same date, |amount|, and fuzzy desc)
     #    This does not delete anything; it just shows clusters that look duplicated.
     key = (df_norm['date'].dt.date.astype(str) + '|' +
