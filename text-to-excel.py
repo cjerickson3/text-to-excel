@@ -1260,14 +1260,17 @@ def main():
             from audit_recon import normalize, imbalance_summary
             df_norm = normalize(df)
             report  = imbalance_summary(df_norm)
-            audit_path = re.sub(r'\.xlsx$', '', dashboard_path) + '_Audit.xlsx'
+            dash_p = Path(args.dashboard)  # or Path(dashboard_path) if that’s your var
+            audit_path = Path(args.audit_path) if getattr(args, "audit_path", None) else \
+                     dash_p.with_name(dash_p.stem + "_Audit" + dash_p.suffix)
+
             with pd.ExcelWriter(audit_path, engine="xlsxwriter") as xw:
                 report['month_recon'].to_excel(xw, 'Month_Recon', index=False)
                 report['sign_anomalies'].to_excel(xw, 'Sign_Anomalies', index=False)
                 report['near_duplicates'].to_excel(xw, 'Near_Duplicates', index=False)
                 report['pershing_issues'].to_excel(xw, 'Pershing_Check', index=False)
-            if report['by_source_file'] is not None:
-                report['by_source_file'].to_excel(xw, 'By_Source_File', index=False)
+                if report['by_source_file'] is not None:
+                    report['by_source_file'].to_excel(xw, 'By_Source_File', index=False)
             print(f"[args.audit] wrote {audit_path}")
         except Exception as e:
             print(f"[args.audit] skipped due to error: {e}")
