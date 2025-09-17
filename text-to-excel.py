@@ -13,15 +13,26 @@ Fix in this version:
 
 import re
 import sys
+import subprocess
 import argparse
 from pathlib import Path
 import pandas as pd
+def git_version():
+    try:
+        return subprocess.check_output(
+            ["git","describe","--tags","--dirty","--always"], text=True
+        ).strip()
+    except Exception:
+        return None
+ver = git_version()
+print("Version #",ver)
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 import hashlib
 from datetime import datetime
+
 CALLS = {"parse_dep_add": 0}  # put at module top, once
 # Regex patterns
 DATE_START_RE = re.compile(r"^\s*(\d{2}/\d{2})")
@@ -1233,6 +1244,23 @@ def main():
             print(f"[WARN] Reconciliation step skipped due to error: {_e}")
 
     # ---------------- SAVE & LOG ----------------
+    #  Put audit_recon here?
+    if getattr(args, "audit", False):
+        try:
+            from audit_recon import normalize, imbalance_summary
+            df_norm = normalize(df)
+            report  = imbalance_summary(df_norm)
+            audit_path = re.sub(r'\.xlsx$', '', dashboard_path) + '_Audit.xlsx'
+            with pd.ExcelWriter(audit_path, engine="xlsxwriter") as xw:
+                report['month_recon'].to_excel(xw, 'Month_Recon', index=False)
+                report['sign_anomalies'].to_excel(xw, 'Sign_Anomalies', index=False)
+                report['near_duplicates'].to_excel(xw, 'Near_Duplicates', index=False)
+                report['pershing_issues'].to_excel(xw, 'Pershing_Check', index=False)
+            if report['by_source_file'] is not None:
+                report['by_source_file'].to_excel(xw, 'By_Source_File', index=False)
+            print(f"[audit] wrote {audit_path}")
+        except Exception as e:
+            print(f"[audit] skipped due to error: {e}")
     wb.save(dashboard_path)
     append_ingest_log(log_ws, dashboard_path, sig, len(df), total_added)
 

@@ -29,7 +29,8 @@ Thumbs.db
 htmlcov/
 .coverage*
 *.log
-
+Chase_Budget_Dashboard.xlsx
+*_Audit*.xlsx
 # Project-specific artifacts
 output/
 **/output/**
