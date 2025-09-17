@@ -36,6 +36,7 @@ output/
 # Data dumps (keep small redacted samples only)
 data/raw/
 **/History_text/**
+**/Chase_history/**
 
 # Secrets (use .env.example to share keys schema)
 .env
