@@ -167,35 +167,6 @@ def _to_float_amt(txt: str) -> float:
     return -val if neg else val
 def _parse_money(s): return float(s.replace(',', ''))
 
-def extract_statement_totals(raw_lines):
-    t = {}
-    for ln in raw_lines:
-        if 'deposit' in ln.lower():
-            m = TOT_DEPOSITS_RE.search(ln);      t['deposits']    = _parse_money(m.group(1)) if m else t.get('deposits')
-        if 'withdraw' in ln.lower() or 'debit' in ln.lower():
-            m = TOT_WITHDRAWALS_RE.search(ln);   t['withdrawals'] = _parse_money(m.group(1)) if m else t.get('withdrawals')
-    return t
-
-def append_adjustments(df, totals, source_file, date_for_adj, threshold=0.02):
-    import pandas as pd
-    df2 = df.copy()
-    dep = float(df2.loc[df2['Amount'] > 0, 'Amount'].sum())
-    wdr = float(-df2.loc[df2['Amount'] < 0, 'Amount'].sum())  # positive
-    rows = []
-    if 'deposits' in totals:
-        delta = round(totals['deposits'] - dep, 2)
-        if abs(delta) >= threshold:
-            rows.append(dict(Date=date_for_adj, Description=f'Adjustment: deposits total per statement ({source_file})',
-                             Amount=delta, Category='Adjustment', Subcategory='Statement delta', SourceFile=source_file))
-    if 'withdrawals' in totals:
-        delta = round(totals['withdrawals'] - wdr, 2)
-        if abs(delta) >= threshold:
-            rows.append(dict(Date=date_for_adj, Description=f'Adjustment: withdrawals total per statement ({source_file})',
-                             Amount=-delta, Category='Adjustment', Subcategory='Statement delta', SourceFile=source_file))
-    if rows:
-        df2 = pd.concat([df2, pd.DataFrame(rows)], ignore_index=True)
-    return df2
-
 def parse_begin_end_balances(lines: list[str]) -> tuple[float|None, float|None]:
     """
     Returns (begin, end) balances for the CHECKING account on the statement.
@@ -244,34 +215,49 @@ def parse_begin_end_balances(lines: list[str]) -> tuple[float|None, float|None]:
 
 # --- End RegExes
 # --- Statement totals (for reconciliation by side) ---
-TOTAL_DEPOSITS_RE = re.compile(
-    r"""(?i)
-    ^\s*(?:Total\s+)?Deposits?\s*(?:&|and)?\s*(?:Other\s+)?(?:Additions?|Credits?)\s*
-    \$?\s*([\d,]+\.\d{2})
-    """, re.X
-)
-TOTAL_WITHDRAWALS_RE = re.compile(
-    r"""(?i)
-    ^\s*(?:Total\s+)?(?:Withdrawals?|Subtractions?)\s*
-    \$?\s*([\d,]+\.\d{2})
-    """, re.X
-)
+# safer, simpler extractor
+import re
 
+TOT_DEPOSITS_RE = re.compile(r'Total\s+Deposits\s+and\s+Additions\s*\$?\s*([0-9,]+\.\d{2})', re.I)
+TOT_WITHDRAWALS_RE = re.compile(
+    r'Total\s+(?:ATM\s*&\s*Debit\s*Card\s+)?Withdrawals(?:\s+and\s+Debits)?\s*\$?\s*([0-9,]+\.\d{2})',
+    re.I
+)
 def parse_statement_totals(lines: list[str]) -> tuple[float|None, float|None]:
-    dep, wd = None, None
-    for raw in lines:
-        m = TOTAL_DEPOSITS_RE.search(raw)
-        if m:
-            try: dep = clean_amount(m.group(1))
-            except Exception: pass
-        m2 = TOTAL_WITHDRAWALS_RE.search(raw)
-        if m2:
-            try: wd = clean_amount(m2.group(1))
-            except Exception: pass
-    # Deposits total should be positive; withdrawals positive magnitude
-    if dep is not None: dep = abs(dep)
-    if wd is not None: wd = abs(wd)
-    return dep, wd
+    """Return (deposits_total, withdrawals_total) as floats or None if not found."""
+    dep_total: float | None = None
+    wd_total: float | None = None
+    for ln in lines:
+        m = TOT_DEPOSITS_RE.search(ln)
+        if m: dep_total = float(m.group(1).replace(',', ''))
+        m = TOT_WITHDRAWALS_RE.search(ln)
+        if m: wd_total   = float(m.group(1).replace(',', ''))
+    return dep_total, wd_total
+
+def append_adjustments(df: pd.DataFrame,
+                       raw_lines: list[str],
+                       source_file: str,
+                       date_for_adj: pd.Timestamp,
+                       threshold: float = 0.02) -> pd.DataFrame:
+    dep_total, wd_total = parse_statement_totals(raw_lines)
+    dep_sum = float(df.loc[df["Amount"] > 0, "Amount"].sum())
+    wd_sum  = float((-df.loc[df["Amount"] < 0, "Amount"]).sum())
+    rows = []
+    if dep_total is not None:
+        delta = round(dep_total - dep_sum, 2)
+        if abs(delta) >= threshold:
+            rows.append({"Date": date_for_adj,
+                         "Description": f"Adjustment: deposits total per statement ({source_file})",
+                         "Category": "Adjustment", "Amount": delta, "_src": "ADJUST"})
+    if wd_total is not None:
+        delta = round(wd_total - wd_sum, 2)
+        if abs(delta) >= threshold:
+            rows.append({"Date": date_for_adj,
+                         "Description": f"Adjustment: withdrawals total per statement ({source_file})",
+                         "Category": "Adjustment", "Amount": -delta, "_src": "ADJUST"})
+    if rows:
+        df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
+    return df
 
 # --- Section headers (be permissive; Chase wording varies) ---
 SECTION_PATTERNS = {
@@ -280,7 +266,6 @@ SECTION_PATTERNS = {
     "CHECKS": re.compile(r"Checks?\s+Paid", re.I),
     "RETURNS": re.compile(r"(Return?|Returned\s+Items?|Adjustments?)", re.I),
 }
-
 DEFAULT_INCOME_KEYS = [
     "ONLINE TRANSFER FROM", "TRANSFER FROM", "DEPOSIT", "PAYROLL",
     "CHECK DEPOSIT", "ATM CHECK DEPOSIT", "INTEREST PAYMENT", "Direct Dep", 
@@ -1052,8 +1037,10 @@ def main():
                 help="Write reconciliation audit workbook next to the dashboard")
     ap.add_argument("--audit-path", default=None)
     ap.add_argument("--auto-adjust", action="store_true",
-                help="Add Adjustment txn(s) to match statement totals")
-    ap.add_argument("--adjust-threshold", type=float, default=0.02)
+                help="Add 'Adjustment' txn(s) so parsed totals match statement totals")
+    ap.add_argument("--adjust-threshold", type=float, default=0.02,
+                help="Only add an adjustment if absolute delta >= this amount")
+
 
     args = ap.parse_args()
 
@@ -1296,15 +1283,18 @@ def main():
     #  Put audit_recon here?
     # --- auto-adjust ---
     if args.auto_adjust:
-        raw_lines = Path(args.input).read_text(encoding="utf-8", errors="ignore").splitlines()
-        totals = extract_statement_totals(raw_lines)
-    if totals:
-        adj_date = pd.to_datetime(df['Date'].max())
-        df = append_adjustments(df, totals, source_file=Path(args.input).name,
-                                date_for_adj=adj_date, threshold=args.adjust_threshold)
-        print(f"[auto-adjust] applied: {totals}")
-    else:
-        print("[auto-adjust] no statement totals found; skipped")
+        try:
+            adj_date = pd.to_datetime(df["Date"].max())
+            df = append_adjustments(
+            df=df,
+            raw_lines=lines,  # <-- pass lines; the helper will call parse_statement_totals(lines)
+            source_file=Path(args.input).name,
+            date_for_adj=adj_date,
+            threshold=args.adjust_threshold,
+        )
+            print("[auto-adjust] applied (if needed).")
+        except Exception as e:
+            print(f"[auto-adjust] skipped due to error: {e}")
 
 # --- audit ---
     if args.audit:
