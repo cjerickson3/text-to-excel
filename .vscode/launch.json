@@ -1,0 +1,38 @@
+{
+  // VS Code debug: adjust paths as needed
+  {
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run text-to-excel.py (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/text-to-excel.py",
+      "cwd": "${workspaceFolder}",             // ← add this
+      "console": "integratedTerminal",
+      "args": [
+        "--debug",
+        "--audit",
+        "--auto-adjust",
+        "--input", "./History_text/20200706-raw.txt",
+        "--dashboard", "Chase_Budget_Dashboard.xlsx"
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true,
+      "env": { "PYTHONUTF8": "1" }
+    },
+    {
+      "name": "Python: ingest_statement_text",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}",             // ← add this too
+      "console": "integratedTerminal",
+      "args": [
+        "--input", "20190101-raw.txt",
+        "--dashboard", "Chase_Budget_Dashboard.xlsx",
+        "--rules", "category_rules.csv"
+      ]
+    }
+  ]
+}
