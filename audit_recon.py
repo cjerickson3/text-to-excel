@@ -85,12 +85,19 @@ def imbalance_summary(df_norm):
     pershing['ym'] = pershing['date'].dt.to_period('M')
     pershing_counts = pershing.groupby('ym')['abs_amount'].agg(list).reset_index()
     def check_triplet(amts):
-        # allow small rounding
-        rounded = [round(a,2) for a in amts]
+        try:
+            rounded = [round(float(a), 2) for a in (amts or [])]
+        except Exception:
+            rounded = []
         return (rounded.count(500.00), rounded.count(3000.00))
-    pershing_counts[['cnt_500','cnt_3000']] = pershing_counts['abs_amount'].apply(lambda L: pd.Series(check_triplet(L)))
-    pershing_issues = pershing_counts.query('cnt_500<2 or cnt_3000<1')
-
+    if pershing_counts.empty:
+    # nothing to check, return an empty frame with expected columns
+        pershing_issues = pershing_counts.assign(cnt_500=pd.Series(dtype=int),
+                                             cnt_3000=pd.Series(dtype=int)).head(0)
+    else:
+        counts = pershing_counts['abs_amount'].apply(check_triplet).tolist()
+        pershing_counts[['cnt_500','cnt_3000']] = pd.DataFrame(counts, index=pershing_counts.index)
+        pershing_issues = pershing_counts.query('cnt_500 < 2 or cnt_3000 < 1')
     # 5) Optional: by source file totals (helps when a single statement file is off)
     by_file = None
     if 'source_file' in df_norm.columns:

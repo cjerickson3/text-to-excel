@@ -1,11 +1,48 @@
 keyword,category,match_type,case_sensitive
 WAL-MART,Groceries,contains,0
-TST*,Food & drink,startswith,1
+Kroger,Groceries,contains,0
+Tom Thumb,Groceries,contains,0
+H-E-B ,Groceries,contains,0
+Wholefds,Groceries,contains,0
+Sprouts Farmers Mkt,Groceries,contains,0
+Central Market,Groceries,contains,0
+Costco Whse,Groceries,contains,0
+ Brookshir,Groceries,contains,0
+Aldi,Groceries,contains,0
+Trader Joe's,Groceries,contains,0
 PERSHING,401K transfer,contains,0
 ONLINE PAYMENT,Online payment,contains,0
 HOME DEPOT,Home Repair,contains,0
-LOWES,Home Repair,contains,0
+LOWE'S,Home Repair,contains,0
 GOLF,Golf,contains,0
+Glf,Golf,contains,0
+Pga Tour ,Golf,contains,0
 WELLCARE,Health & wellness,contains,0
+GoldenRule,Health & wellness,contains,0
 CHIROPRACT,Health & wellness,contains,0
+Aetna,Health & wellness,contains,0
+Humana,Health & wellness,contains,0
+Racetrac,Gasoline,contains,0
+Buc-Ee's,Gasoline,contains,0
+Quiktrip,Gasoline,contains,0
 KERA,Donations,contains,0
+Salata,Food & drink,contains,0
+Fish Shack,Food & drink,contains,0
+Little Greek,Food & drink,contains,0
+TST*,Food & drink,startswith,1
+Chick-Fil-A,Food & drink,contains,0
+Jersey Mikes,Food & drink,contains,0
+Taco Bell,Food & drink,contains,0
+Potbelly,Food & drink,contains,0
+Modernmkt,Food & drink,contains,0
+Fuzzy's Taco Shop,Food & drink,contains,0
+Tacodeli,Food & drink,contains,0
+Starbucks,Food & drink,contains,0
+Braums Store,Food & drink,contains,0
+Original Chop Shop,Food & drink,contains,0
+LA Madeleine,Food & drink,contains,0
+Jasons Deli,Food & drink,contains,0
+Panera Bread,Food & drink,contains,0
+Chiloso,Food & drink,contains,0
+MCDONALD'S ,Food & drink,contains,0
+Cinemark,Entertainment,contains,0
