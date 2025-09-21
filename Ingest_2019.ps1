@@ -1,6 +1,6 @@
 # Set your paths
 $root      = "C:\Users\chris\Documents\2425_Delmar\Budget"
-$script    = Join-Path $root "ingest_statement_text.py"
+$script    = Join-Path $root "text-to-excel.py"
 $inDir     = Join-Path $root "History_text"
 $dashboard = Join-Path $root "Chase_Budget_Dashboard.xlsx"   # change if yours is named differently
 # $rules     = Join-Path $root "rules.csv"        # optional

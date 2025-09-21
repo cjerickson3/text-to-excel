@@ -20,10 +20,12 @@ dist/
 .ruff_cache/
 
 # Editors / OS
-.vscode/
 .idea/
 .DS_Store
 Thumbs.db
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
 
 # Coverage / logs
 htmlcov/

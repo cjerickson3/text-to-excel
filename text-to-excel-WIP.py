@@ -64,12 +64,16 @@ CHECKS_HEADER = re.compile(r'^\s*CHECKS?\s+PAID\b', re.I)
 CHECK_NUMBER_INLINE = re.compile(r'\bCHECK\s+#?\d{3,6}\b', re.I)
 
 # Your tolerant check-line patterns from earlier (start-of-line forms)
-
+# (If you already have CHECK_LINE_RE1/CHECK_LINE_RE2, keep those and reuse them here.)
 CHECK_LINE_RE1 = re.compile(
-    r'^\s*(?:CHECK\s+)?(?P<chkno>\d{3,6})\s*(?:(?:\s*[\^\*]\s*)+)?(?P<mmdd>\d{1,2}[/-]\d{1,2})\s+(?P<amt>-?\$?\d[\d,]*\.\d{2})',
+    r'^\s*(?:CHECK\s+)?(?P<chkno>\d{3,6})\s*(?:[\^\*]\s*)?(?P<mmdd>\d{1,2}[/-]\d{1,2})\s+(?P<amt>-?\$?\d[\d,]*\.\d{2})',
     re.I
 )
-
+CHECK_LINE_RE2 = re.compile(
+    r'^\s*(?P<mmdd>\d{1,2}[/-]\d{1,2})\s+(?:CHECK\s+)?(?P<chkno>\d{3,6}).*?(?P<amt>-?\$?\d[\d,]*\.\d{2})',
+    re.I
+)
+#
 CHECK_LINE_RE = re.compile(
     r"""^\s*
         (?P<chkno>\d{4,})
@@ -90,8 +94,6 @@ DEP_ADD_HDR = re.compile(r'Deposits?\s*(?:&|and)?\s*(?:Other\s+)?(?:Additions?|C
 HEADER_ROW = re.compile(r'^\s*DATE\s+DESCRIPTION\s+AMOUNT\b', re.I)
 
 # any obvious “we’re in checks now” signature
-# Lines that *start* a check row: 4+ digits at the very beginning
-CHECKS_NUMFIRST_HEAD = re.compile(r'^\s*\d{4,6}\b')
 CHECK_SNIFF = re.compile(
     r'\bCHECK\b|\b\d{4,6}\b\s*(?:[\^\*]\s*)?\d{1,2}\s*[/-]\s*\d{1,2}', re.I
 )
@@ -165,6 +167,35 @@ def _to_float_amt(txt: str) -> float:
     return -val if neg else val
 def _parse_money(s): return float(s.replace(',', ''))
 
+def extract_statement_totals(raw_lines):
+    t = {}
+    for ln in raw_lines:
+        if 'deposit' in ln.lower():
+            m = TOT_DEPOSITS_RE.search(ln);      t['deposits']    = _parse_money(m.group(1)) if m else t.get('deposits')
+        if 'withdraw' in ln.lower() or 'debit' in ln.lower():
+            m = TOT_WITHDRAWALS_RE.search(ln);   t['withdrawals'] = _parse_money(m.group(1)) if m else t.get('withdrawals')
+    return t
+
+def append_adjustments(df, totals, source_file, date_for_adj, threshold=0.02):
+    import pandas as pd
+    df2 = df.copy()
+    dep = float(df2.loc[df2['Amount'] > 0, 'Amount'].sum())
+    wdr = float(-df2.loc[df2['Amount'] < 0, 'Amount'].sum())  # positive
+    rows = []
+    if 'deposits' in totals:
+        delta = round(totals['deposits'] - dep, 2)
+        if abs(delta) >= threshold:
+            rows.append(dict(Date=date_for_adj, Description=f'Adjustment: deposits total per statement ({source_file})',
+                             Amount=delta, Category='Adjustment', Subcategory='Statement delta', SourceFile=source_file))
+    if 'withdrawals' in totals:
+        delta = round(totals['withdrawals'] - wdr, 2)
+        if abs(delta) >= threshold:
+            rows.append(dict(Date=date_for_adj, Description=f'Adjustment: withdrawals total per statement ({source_file})',
+                             Amount=-delta, Category='Adjustment', Subcategory='Statement delta', SourceFile=source_file))
+    if rows:
+        df2 = pd.concat([df2, pd.DataFrame(rows)], ignore_index=True)
+    return df2
+
 def parse_begin_end_balances(lines: list[str]) -> tuple[float|None, float|None]:
     """
     Returns (begin, end) balances for the CHECKING account on the statement.
@@ -213,61 +244,34 @@ def parse_begin_end_balances(lines: list[str]) -> tuple[float|None, float|None]:
 
 # --- End RegExes
 # --- Statement totals (for reconciliation by side) ---
-# safer, simpler extractor
-
-TOT_DEPOSITS_RE = re.compile(r'Total\s+Deposits\s+and\s+Additions\s*\$?\s*([0-9,]+\.\d{2})', re.I)
-TOT_WITHDRAWALS_RE = re.compile(
-    r'Total\s+(?:ATM\s*&\s*Debit\s*Card\s+)?Withdrawals(?:\s+and\s+Debits)?\s*\$?\s*([0-9,]+\.\d{2})',
-    re.I
+TOTAL_DEPOSITS_RE = re.compile(
+    r"""(?i)
+    ^\s*(?:Total\s+)?Deposits?\s*(?:&|and)?\s*(?:Other\s+)?(?:Additions?|Credits?)\s*
+    \$?\s*([\d,]+\.\d{2})
+    """, re.X
 )
-def parse_statement_totals(lines: list[str]) -> tuple[float|None, float|None]:
-    """Return (deposits_total, withdrawals_total) as floats or None if not found."""
-    dep_total: float | None = None
-    wd_total: float | None = None
-    for ln in lines:
-        m = TOT_DEPOSITS_RE.search(ln)
-        if m: dep_total = float(m.group(1).replace(',', ''))
-        m = TOT_WITHDRAWALS_RE.search(ln)
-        if m: wd_total   = float(m.group(1).replace(',', ''))
-    return dep_total, wd_total
+TOTAL_WITHDRAWALS_RE = re.compile(
+    r"""(?i)
+    ^\s*(?:Total\s+)?(?:Withdrawals?|Subtractions?)\s*
+    \$?\s*([\d,]+\.\d{2})
+    """, re.X
+)
 
-def append_adjustments(df: pd.DataFrame,
-                       raw_lines: list[str],
-                       source_file: str,
-                       date_for_adj: pd.Timestamp,
-                       threshold: float = 0.02) -> pd.DataFrame:
-    dep_total, wd_total = parse_statement_totals(raw_lines)
-    dep_sum = float(df.loc[df["Amount"] > 0, "Amount"].sum())
-    wd_sum  = float((-df.loc[df["Amount"] < 0, "Amount"]).sum())
-    rows = []
-    if dep_total is not None:
-        delta = round(dep_total - dep_sum, 2)
-        if abs(delta) >= threshold:
-            rows.append({"Date": date_for_adj,
-                         "Description": f"Adjustment: deposits total per statement ({source_file})",
-                         "Category": "Adjustment", "Amount": delta, "_src": "ADJUST"})
-    if wd_total is not None:
-        delta = round(wd_total - wd_sum, 2)
-        if abs(delta) >= threshold:
-            rows.append({"Date": date_for_adj,
-                         "Description": f"Adjustment: withdrawals total per statement ({source_file})",
-                         "Category": "Adjustment", "Amount": -delta, "_src": "ADJUST"})
-    if rows:
-        df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
-    return df
-# Create Adjustment Record
-def _append_adj(df_in, amt, label):
-    adj_date = pd.to_datetime(df_in["Date"].max())
-    row = {
-        "Date": adj_date,
-        "Description": f"Adjustment: {label} per statement",
-        "Amount": float(amt),
-        "_src": "ADJUST",
-        "Category": "Adjustment",
-    }
-    if "Subcategory" in df_in.columns:
-        row["Subcategory"] = "Statement delta"
-    return pd.concat([df_in, pd.DataFrame([row])], ignore_index=True)
+def parse_statement_totals(lines: list[str]) -> tuple[float|None, float|None]:
+    dep, wd = None, None
+    for raw in lines:
+        m = TOTAL_DEPOSITS_RE.search(raw)
+        if m:
+            try: dep = clean_amount(m.group(1))
+            except Exception: pass
+        m2 = TOTAL_WITHDRAWALS_RE.search(raw)
+        if m2:
+            try: wd = clean_amount(m2.group(1))
+            except Exception: pass
+    # Deposits total should be positive; withdrawals positive magnitude
+    if dep is not None: dep = abs(dep)
+    if wd is not None: wd = abs(wd)
+    return dep, wd
 
 # --- Section headers (be permissive; Chase wording varies) ---
 SECTION_PATTERNS = {
@@ -276,6 +280,7 @@ SECTION_PATTERNS = {
     "CHECKS": re.compile(r"Checks?\s+Paid", re.I),
     "RETURNS": re.compile(r"(Return?|Returned\s+Items?|Adjustments?)", re.I),
 }
+
 DEFAULT_INCOME_KEYS = [
     "ONLINE TRANSFER FROM", "TRANSFER FROM", "DEPOSIT", "PAYROLL",
     "CHECK DEPOSIT", "ATM CHECK DEPOSIT", "INTEREST PAYMENT", "Direct Dep", 
@@ -299,7 +304,7 @@ def is_check_txn(line: str) -> bool:
         return True
     if CHECK_NUMBER_INLINE.search(line):
         return True
-    if CHECK_LINE_RE1.match(line):
+    if CHECK_LINE_RE1.match(line) or CHECK_LINE_RE2.match(line):
         return True
     return False
 
@@ -574,7 +579,7 @@ def parse_dep_add(lines, end_year: int, end_month: int, *, debug: bool=False):
     return rows
 
 def _match_check(line: str):
-    m = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
+    m = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE2.match(line) or CHECK_LINE_RE.match(line)
     if not m:
         return None
     # normalize to (chkno, mmdd, amt_text)
@@ -757,7 +762,7 @@ def parse_records_from_lines(lines, end_year: int, end_month: int):
 
         # Only accept true check lines here
         if is_check_txn(line):
-            m_chk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
+            m_chk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE2.match(line) or CHECK_LINE_RE.match(line)
             if not m_chk:
                 continue
             chkno = m_chk.group("chkno")
@@ -842,9 +847,6 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
     out = []             # (Date, Description, Amount, _src)
     N = len(lines)
 
-    in_checks_span = False      # we're inside the contiguous 4-digit-start check block
-    checks_span_done = False    # we've left it; do not parse any more checks later
-
     def norm(s: str) -> str:
         return (s or '').replace('\u00A0',' ').replace('\u2007',' ').replace('\u202F',' ')\
                         .replace('\t',' ').rstrip('\r\n')
@@ -855,11 +857,6 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
         if not line:
             if sec_idx == 2:  # blank gap between ATM and Electronic
                 gap_after_atm = True
-            # A blank line *inside* checks span ends the span
-            if in_checks_span:
-                in_checks_span = False
-                checks_span_done = True
-                if debug: print(f"-> leave CHECKS at {i+1} (blank)")
             i += 1; continue
 
         # Stop when Savings transaction table begins
@@ -867,29 +864,18 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
             if debug: print(f"-> break at {i+1} {line}")
             break
 
-        # 1) Check rows (only inside the first contiguous 4-digit-start block)
-        if not checks_span_done:
-            mchk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
-
-            # start or continue the span only if the *line starts* with 4+ digits
-            if mchk and (in_checks_span or CHECKS_NUMFIRST_HEAD.match(line)):
-                if not in_checks_span:
-                    in_checks_span = True
-                    sec_idx = max(sec_idx, 1)
-                    if debug: print(f"-> enter CHECKS (span) at {i+1} {line}")
-
-                mm, dd = [int(x) for x in re.split(r'[/-]', mchk.group('mmdd'))]
-                year   = assign_year(end_year, end_month, mm)
-                amt    = clean_amount(mchk.group('amt'))
-                desc   = f"CHECK #{mchk.group('chkno')}"
-                out.append((f"{year:04d}/{mm:02d}/{dd:02d}", desc, -abs(amt), "CHECKS"))
-                i += 1; continue
-
-            # if we were in the span and the current line does *not* start with 4 digits -> close it permanently
-            if in_checks_span and not CHECKS_NUMFIRST_HEAD.match(line):
-                in_checks_span = False
-                checks_span_done = True
-                if debug: print(f"-> leave CHECKS at {i+1} {line}")
+        # 1) Check rows (always negative)
+        mchk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE2.match(line) or CHECK_LINE_RE.match(line)
+        if mchk:
+            if sec_idx < 1:
+                sec_idx = 1
+                if debug: print(f"-> enter CHECKS at {i+1} {line}")
+            mm, dd = [int(x) for x in re.split(r'[/-]', mchk.group('mmdd'))]
+            year   = assign_year(end_year, end_month, mm)
+            amt    = clean_amount(mchk.group('amt'))
+            desc   = f"CHECK #{mchk.group('chkno')}"
+            out.append((f"{year:04d}/{mm:02d}/{dd:02d}", desc, -abs(amt), "CHECKS"))
+            i += 1; continue
 
         # 2) Date-led rows (Deposits/ATM/Electronic)
         mdate = DATE_LINE.match(line)
@@ -897,6 +883,8 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
             mm, dd = int(mdate.group(1)), int(mdate.group(2))
             year   = assign_year(end_year, end_month, mm)
 
+            # Grab amount token: if the line has a trailing BALANCE amount, take the FIRST amount;
+            # otherwise take the LAST amount.
             amatches = list(AMT_RE.finditer(line))
             if not amatches:
                 i += 1; continue
@@ -918,7 +906,7 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
 
             # Signing per section
             if sec_idx == 0:
-                signed, src = amt, "DEP_ADD"
+                signed, src = amt, "DEP_ADD"   # keep deposit signs
             elif sec_idx == 2:
                 signed, src = -abs(amt), "ATM"
             elif sec_idx >= 3:
@@ -936,7 +924,6 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
         i += 1
 
     return out
-
 
 # End Parse_records
 
@@ -1065,10 +1052,8 @@ def main():
                 help="Write reconciliation audit workbook next to the dashboard")
     ap.add_argument("--audit-path", default=None)
     ap.add_argument("--auto-adjust", action="store_true",
-                help="Add 'Adjustment' txn(s) so parsed totals match statement totals")
-    ap.add_argument("--adjust-threshold", type=float, default=0.02,
-                help="Only add an adjustment if absolute delta >= this amount")
-
+                help="Add Adjustment txn(s) to match statement totals")
+    ap.add_argument("--adjust-threshold", type=float, default=0.02)
 
     args = ap.parse_args()
 
@@ -1184,19 +1169,6 @@ def main():
         if not amb.empty:
             print("\n[DEBUG] Rows without section (signed via keywords):")
             print(amb.to_string(index=False))
-    # ---------------- BALANCE ADJUSTMENT (make ledger match statement end) ----------------
-    try:
-        dep_total_calc = float(df.loc[df["Amount"] > 0, "Amount"].sum())
-        wd_total_calc  = float((-df.loc[df["Amount"] < 0, "Amount"]).sum())
-        computed_end   = None if begin_bal is None else (begin_bal + dep_total_calc - wd_total_calc)
-
-        if computed_end is not None and end_bal is not None:
-            needed_delta = round(end_bal - computed_end, 2)   # <-- amount to add to ledger
-            if abs(needed_delta) >= float(getattr(args, "adjust_threshold", 0.02)):
-                df = _append_adj(df, needed_delta, "balance delta")
-                print(f"[balance-adjust] added {needed_delta:+.2f}")
-    except Exception as e:
-        print(f"[balance-adjust] skipped due to error: {e}")
 
     # ---------------- RECON DETAIL (last run) ----------------
     try:
@@ -1271,9 +1243,7 @@ def main():
             stmt_end_ts = pd.Timestamp(y, mth, d)
 
         computed_end = None if begin_bal is None else (begin_bal + dep_total_calc - wd_total_calc)
-        stmt_diff = computed_end - end_bal
-        row_df = pd.DataFrame([{**{c: pd.NA for c in recon_df.columns}, **new_row}], columns=recon_df.columns)
-        recon_df = pd.concat([recon_df, row_df], ignore_index=True)
+
         sheet_name = "Balance Reconciliation"
         if sheet_name in wb.sheetnames:
             ws_rc = wb[sheet_name]
@@ -1298,14 +1268,14 @@ def main():
             "Stmt Withdrawals": stmt_wd,
             "Δ Deposits": (None if stmt_dep is None else round(dep_total_calc - stmt_dep, 2)),
             "Δ Withdrawals": (None if stmt_wd is None else round(wd_total_calc - stmt_wd, 2)),
-            "Diff": (None if (computed_end is None or end_bal is None) else round(stmt_diff, 2)),
+            "Diff": (None if (computed_end is None or end_bal is None) else round(computed_end - end_bal, 2)),
         }
-        
+
         # Upsert on Statement End
         if "Statement End" in recon_df.columns and not recon_df.empty:
             recon_df = recon_df[recon_df["Statement End"] != new_row["Statement End"]]
-        row_df = pd.DataFrame([{**{c: pd.NA for c in recon_df.columns}, **new_row}], columns=recon_df.columns)
-        recon_df = pd.concat([recon_df, row_df], ignore_index=True)
+        recon_df = pd.concat([recon_df, pd.DataFrame([new_row])], ignore_index=True)
+
         # Sort by date if possible
         if not recon_df.empty and "Statement End" in recon_df.columns:
             try:
@@ -1324,7 +1294,19 @@ def main():
 
     # ---------------- SAVE & LOG ----------------
     #  Put audit_recon here?
-    # --- audit ---
+    # --- auto-adjust ---
+    if args.auto_adjust:
+        raw_lines = Path(args.input).read_text(encoding="utf-8", errors="ignore").splitlines()
+        totals = extract_statement_totals(raw_lines)
+    if totals:
+        adj_date = pd.to_datetime(df['Date'].max())
+        df = append_adjustments(df, totals, source_file=Path(args.input).name,
+                                date_for_adj=adj_date, threshold=args.adjust_threshold)
+        print(f"[auto-adjust] applied: {totals}")
+    else:
+        print("[auto-adjust] no statement totals found; skipped")
+
+# --- audit ---
     if args.audit:
         from audit_recon import normalize, imbalance_summary
         df_norm = normalize(df)
@@ -1334,13 +1316,10 @@ def main():
                  Path(args.dashboard).with_name(Path(args.dashboard).stem + "_Audit.xlsx")
 
     with pd.ExcelWriter(audit_path, engine="xlsxwriter") as xw:
-        report['month_recon'].to_excel(xw, sheet_name='Month_Recon', index=False)
-        report['sign_anomalies'].to_excel(xw, sheet_name='Sign_Anomalies', index=False)
-        report['near_duplicates'].to_excel(xw, sheet_name='Near_Duplicates', index=False)
-        report['pershing_issues'].to_excel(xw, sheet_name='Pershing_Check', index=False)
-    if report.get('by_source_file') is not None:
-        report['by_source_file'].to_excel(xw, sheet_name='By_Source_File', index=False)
-
+        report['month_recon'].to_excel(xw, 'Month_Recon', index=False)
+        report['sign_anomalies'].to_excel(xw, 'Sign_Anomalies', index=False)
+        report['near_duplicates'].to_excel(xw, 'Near_Duplicates', index=False)
+        report['pershing_issues'].to_excel(xw, 'Pershing_Check', index=False)
         if report.get('by_source_file') is not None:
             report['by_source_file'].to_excel(xw, 'By_Source_File', index=False)
     print(f"[audit] wrote {audit_path}")
