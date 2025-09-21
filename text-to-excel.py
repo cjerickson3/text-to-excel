@@ -1325,25 +1325,28 @@ def main():
     # ---------------- SAVE & LOG ----------------
     #  Put audit_recon here?
     # --- audit ---
-    if args.audit:
-        from audit_recon import normalize, imbalance_summary
-        df_norm = normalize(df)
-        report  = imbalance_summary(df_norm)
+    # --- AUDIT (only when --audit is passed) ---
+    if getattr(args, "audit", False):
+        try:
+            from audit_recon import normalize, imbalance_summary
+            df_norm = normalize(df)
+            report  = imbalance_summary(df_norm)
 
-    audit_path = Path(args.audit_path) if args.audit_path else \
-                 Path(args.dashboard).with_name(Path(args.dashboard).stem + "_Audit.xlsx")
+            audit_path = Path(args.dashboard).with_name(
+                Path(args.dashboard).stem + "_Audit.xlsx"
+            )
+            with pd.ExcelWriter(audit_path, engine="xlsxwriter") as xw:
+                # keyword-only args for pandas 3.0+
+                report['month_recon'].to_excel(xw, sheet_name='Month_Recon', index=False)
+                report['sign_anomalies'].to_excel(xw, sheet_name='Sign_Anomalies', index=False)
+                report['near_duplicates'].to_excel(xw, sheet_name='Near_Duplicates', index=False)
+                report['pershing_issues'].to_excel(xw, sheet_name='Pershing_Check', index=False)
+                if report.get('by_source_file') is not None:
+                    report['by_source_file'].to_excel(xw, sheet_name='By_Source_File', index=False)
 
-    with pd.ExcelWriter(audit_path, engine="xlsxwriter") as xw:
-        report['month_recon'].to_excel(xw, sheet_name='Month_Recon', index=False)
-        report['sign_anomalies'].to_excel(xw, sheet_name='Sign_Anomalies', index=False)
-        report['near_duplicates'].to_excel(xw, sheet_name='Near_Duplicates', index=False)
-        report['pershing_issues'].to_excel(xw, sheet_name='Pershing_Check', index=False)
-    if report.get('by_source_file') is not None:
-        report['by_source_file'].to_excel(xw, sheet_name='By_Source_File', index=False)
-
-        if report.get('by_source_file') is not None:
-            report['by_source_file'].to_excel(xw, 'By_Source_File', index=False)
-    print(f"[audit] wrote {audit_path}")
+            print(f"[audit] wrote {audit_path}")
+        except Exception as e:
+            print(f"[audit] skipped due to error: {e}")
 
 # --- save workbook (your existing code follows) ---
 
