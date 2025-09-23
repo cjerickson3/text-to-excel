@@ -1,0 +1,1 @@
+pdftotext -raw -nopgbrk  Chase_history\20190506-statements-5263-.pdf texts\20190506-raw.txt
