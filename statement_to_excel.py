@@ -19,15 +19,21 @@ from pathlib import Path
 import shutil
 import pandas as pd
 import xlsxwriter
+__version__ = "0.10.2"  # bump this when you cut a release/tag
+
 def git_version():
     try:
         return subprocess.check_output(
-            ["git","describe","--tags","--dirty","--always"], text=True
+            ["git", "describe", "--tags", "--dirty", "--always"], text=True
         ).strip()
     except Exception:
         return None
-ver = git_version()
-print("Version #",ver)
+
+def build_version_string():
+    gv = git_version()
+    print("Version #",gv)
+    return f"{__version__} ({gv})" if gv else __version__
+
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font
@@ -1215,7 +1221,28 @@ def plug_holes_for_electronic(lines, df, input_path, *, debug=False):
     except Exception as e:
         if debug: print(f"[plug-holes] skipped due to error: {e}")
         return df
+def write_about_sheet(wb, dashboard_path):
+    name = "About"
+    if name in wb.sheetnames:
+        ws = wb[name]
+        ws.delete_rows(1, ws.max_row)
+    else:
+        ws = wb.create_sheet(name, 0)  # put it first
 
+    rows = [
+        ["Field", "Value"],
+        ["Tool", dashboard_path.name],
+        ["Version", build_version_string()],
+        ["Generated", datetime.now().isoformat(timespec="seconds")],
+    ]
+    for r in rows:
+        ws.append(r)
+    # Bold header
+    for c in ws[1]:
+        try:
+            c.font = Font(bold=True)
+        except Exception:
+            pass
 
 def main():
     ap = argparse.ArgumentParser()
@@ -1235,10 +1262,13 @@ def main():
                 help="Only add an adjustment if absolute delta >= this amount")
     ap.add_argument("--pdf", default=None, help="Path to the source statement PDF for verification")
     ap.add_argument("--verify-pdf", action="store_true", help="Verify parsed rows against the PDF (requires --pdf)")
-
-
+    ap.add_argument(
+    "--version",
+    action="version",
+    version="%(prog)s " + build_version_string())
     args = ap.parse_args()
-
+    if getattr(args, "debug", False):
+        print("[version]", build_version_string())
     input_path     = Path(args.input)
     dashboard_path = Path(args.dashboard)
     rules_path     = Path(args.rules) if args.rules else None
@@ -1253,6 +1283,7 @@ def main():
     wb = load_workbook(dashboard_path) if dashboard_path.exists() else Workbook()
     if "Sheet" in wb.sheetnames and len(wb.sheetnames) == 1 and wb.active.max_row <= 1:
         wb.remove(wb.active)
+    write_about_sheet(wb, dashboard_path)
 
     # Ingest log (initialize first)
     seen, log_ws = read_ingest_log(wb)
