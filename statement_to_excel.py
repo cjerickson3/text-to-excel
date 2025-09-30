@@ -1096,42 +1096,55 @@ def rebuild_sheet(wb, name, df_in):
 
 def clip_to_checking_lines(lines, *, debug: bool=False):
     """
-    Return the slice of the statement that belongs to CHECKING.
-    We will only cut once we are confident we've reached the *Savings Transaction Detail* area.
-    Rules:
-      - Detect any 'SAVINGS' banner line (e.g., "Chase Savings ...") and remember its index.
-      - Only truncate when we later see a Savings-specific table header like "TRANSACTIONS DETAIL" or "ACCOUNT ACTIVITY"
-        within a short window after that banner.
-      - Do NOT trigger on a generic "DATE DESCRIPTION AMOUNT" header (it appears in Checking too).
-      - If a 'CHECKING' banner appears, reset savings context (we're back in checking pages).
+    Keep only the CHECKING portion of the statement.
+    Once a SAVINGS banner appears, truncate immediately when we see any Savings
+    transaction header (Deposits/Additions, Checks Paid, ATM/Debit, Electronic)
+    or the first date-led line under the Savings context.
     """
-    SAVINGS_BANNER   = re.compile(r'\bSAVINGS\b', re.I)  # broad, matches "Chase Savings ..."
-    SAVINGS_SUMMARY  = re.compile(r'\bSAVINGS\s+SUMMARY\b', re.I)
-    SAVINGS_TXN_HDR  = re.compile(r'^\s*(TRANSACTIONS?\s+DETAIL|ACCOUNT\s+ACTIVITY)\b', re.I)  # stricter
+    SAVINGS_BANNER   = re.compile(r'\bCHASE\s+SAVINGS\b|\bSAVINGS\s+SUMMARY\b|\bSAVINGS\b', re.I)
+    SAVINGS_SUMMARY = re.compile(r'^\s*SAVINGS\s+SUMMARY\b', re.I)
     CHECKING_BANNER  = re.compile(r'\bCHECKING\b', re.I)
 
+    # Section headers that start transaction detail blocks on Chase statements
+    TXN_HEADERS = [
+        re.compile(r'^\s*DEPOSITS?\b.*\b(ADDITIONS?|CREDITS?)\b', re.I),
+        re.compile(r'^\s*CHECKS?\s+PAID\b', re.I),
+        re.compile(r'^\s*ATM\s*&?\s*DEBIT\s*CARD\s*WITHDRAWALS?\b', re.I),
+        re.compile(r'^\s*ELECTRONIC\s+WITHDRAWALS?\b', re.I),
+        re.compile(r'^\s*(TRANSACTIONS?\s+DETAIL|ACCOUNT\s+ACTIVITY)\b', re.I),
+    ]
+
+    DATE_HEAD = re.compile(r'^\s*(1[0-2]|0?[1-9])\s*[/-]\s*(3[01]|[12]\d|0?[1-9])\b')
+
     end_idx = len(lines)
-    last_savings_banner = None
+    in_savings = False
 
     for i, raw in enumerate(lines):
         line = (raw or "").strip()
 
         if CHECKING_BANNER.search(line):
-            # Back in checking context; forget prior savings banner
-            last_savings_banner = None
+            # re-entered checking; any prior savings banner no longer applies
+            in_savings = False
             if debug: print(f"[clip2] CHECKING context at line {i+1}: {line!r}")
             continue
 
-        if SAVINGS_SUMMARY.search(line) or SAVINGS_BANNER.search(line):
-            last_savings_banner = i
-            if debug: print(f"[clip2] SAVINGS banner at line {i+1}: {line!r}")
-            continue
-
-        # Only treat as Savings details when we hit a Savings-specific table header
-        if last_savings_banner is not None and SAVINGS_TXN_HDR.search(line):
+        if SAVINGS_SUMMARY.search(line):
             end_idx = i
-            if debug: print(f"[clip2] Truncating before Savings transactions at line {i+1}: {line!r}")
+            if debug:
+                print(f"[clip2] Truncating at Savings SUMMARY (line {i+1}): {line!r}")
             break
+        elif SAVINGS_BANNER.search(line):
+            last_savings_banner = i
+            if debug:
+                print(f"[clip2] SAVINGS banner at line {i+1}: {line!r}")
+            continue
+        if in_savings:
+            # If we see any transaction header or a date-led row while in Savings,
+            # that means Savings detail is starting → truncate here.
+            if any(p.search(line) for p in TXN_HEADERS) or DATE_HEAD.match(line):
+                end_idx = i
+                if debug: print(f"[clip2] Truncating before Savings details at line {i+1}: {line!r}")
+                break
 
     clipped = lines[:end_idx]
     if debug and len(clipped) != len(lines):
@@ -1539,6 +1552,7 @@ def main():
             print(f"[WARN] Reconciliation step skipped due to error: {e}")
 
     # ---------------- PDF VERIFICATION (optional) ----------------
+
     if getattr(args, "verify_pdf", False) and getattr(args, "pdf", None):
         try:
             dep_total_calc = float(df.loc[df["Amount"] > 0, "Amount"].sum())
@@ -1550,7 +1564,7 @@ def main():
                 args.pdf,
                 df,
                 begin_bal,
-                computed_end,
+                comp_end,
                 within_checking_band=True,   # <<< important
                 debug=args.debug,
             )

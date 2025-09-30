@@ -1,6 +1,6 @@
 # --- Config ---
 $root      = "C:\Users\chris\Documents\2425_Delmar\Budget"
-$script    = Join-Path $root "text-to-excel.py"
+$script    = Join-Path $root "statement_to_excel.py"
 $inDir     = Join-Path $root "History_text"
 $dashboard = Join-Path $root "Chase_Budget_Dashboard.xlsx"
 $rules     = Join-Path $root "category_rules.csv"       # optional
@@ -14,8 +14,6 @@ if (-not $years) {
   Write-Host "No year-prefixed files found in $inDir." -ForegroundColor Yellow
   return
 }
-# Refresh Dashboard file before doing 2018.
-Copy-Item .\templates\Chase_Budget_Dashboard.xlsx ..\
 # Build optional rules arg only if the file exists
 $rulesArg = @()
 if (Test-Path $rules) { $rulesArg = @('--rules', $rules) }
