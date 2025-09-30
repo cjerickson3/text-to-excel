@@ -860,7 +860,16 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
         if not line:
             i += 1
             continue
-
+        # ---- Check-number-first rows (e.g., "2423 ^ 08/27 $859.00") ----
+        mchk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
+        if mchk:
+            mm, dd = map(int, re.split(r'[/-]', mchk.group('mmdd')))
+            year   = assign_year(end_year, end_month, mm)
+            amt    = clean_amount(mchk.group('amt'))
+            desc   = f"CHECK #{mchk.group('chkno')}"
+            out.append((f"{year:04d}/{mm:02d}/{dd:02d}", desc, -abs(amt), "CHECKS"))
+            i += 1
+            continue
         # ---- Section headers (explicit) ----
         if DEP_ADD_HDR.search(line) or re.search(r"\bDEPOSITS?\b.*\b(ADDITIONS?|CREDITS?)\b", line, re.I):
             sec_idx = 0
@@ -1090,9 +1099,37 @@ def rebuild_sheet(wb, name, df_in):
     for c in ws[1]: c.font = Font(bold=True)
     for r in dataframe_to_rows(df_in, index=False, header=False):
         ws.append(r)
+def upsert_summary_sheet(wb, name: str, new_df: pd.DataFrame, key_col: str):
+    """
+    Upsert summary rows on 'key_col' (Month or Year):
+      - If sheet exists, drop old rows whose key is present in new_df[key_col],
+        then append new_df and rewrite the sheet.
+      - If not, just write new_df.
+    """
+    # Normalize incoming columns order
+    cols = list(new_df.columns)
 
+    if name in wb.sheetnames and wb[name].max_row >= 2:
+        ws = wb[name]
+        old_cols = [c.value for c in ws[1]]
+        rows = [r for r in ws.iter_rows(min_row=2, values_only=True)]
+        old_df = pd.DataFrame(rows, columns=old_cols)
 
+        # Align columns if older sheet has extras/missing
+        for c in cols:
+            if c not in old_df.columns:
+                old_df[c] = pd.NA
+        old_df = old_df[cols]
 
+        # Remove keys we’re replacing this run
+        repl_keys = set(new_df[key_col].astype(str).unique())
+        keep_old = ~old_df[key_col].astype(str).isin(repl_keys)
+        combined = pd.concat([old_df[keep_old], new_df], ignore_index=True)
+
+    else:
+        combined = new_df.copy()
+
+    rebuild_sheet(wb, name, combined)
 
 def clip_to_checking_lines(lines, *, debug: bool=False):
     """
@@ -1343,8 +1380,8 @@ def main():
 
     if df.empty:
         print("No transactions parsed.")
-        wb.save(dashboard_path)
         append_ingest_log(log_ws, dashboard_path, sig, 0, 0)
+        wb.save(dashboard_path) 
         return
 
     # ---------------- CATEGORIZE ----------------
@@ -1461,15 +1498,19 @@ def main():
     # ---------------- SUMMARIES (full stack) ----------------
     stack = read_sheet_df(wb, "All Transactions")
     monthly_summary, yearly_summary = build_summaries_with_totals(stack)
-    rebuild_sheet(wb, "Monthly Summary", monthly_summary)
-    rebuild_sheet(wb, "Yearly Summary",  yearly_summary)
+    upsert_summary_sheet(wb, "Monthly Summary", monthly_summary, key_col="Month")
+    upsert_summary_sheet(wb, "Yearly Summary",  yearly_summary,  key_col="Year")
+    # After upserting Yearly Summary, rebuild YOY from the sheet’s current state
+    ys_ws = wb["Yearly Summary"]
+    ys_cols = [c.value for c in ys_ws[1]]
+    ys_rows = [r for r in ys_ws.iter_rows(min_row=2, values_only=True)]
+    ys_df   = pd.DataFrame(ys_rows, columns=ys_cols)
 
-    yoy = yearly_summary.pivot_table(
+    yoy = ys_df.pivot_table(
         index="Category", columns="Year", values="Amount",
         aggfunc="sum", fill_value=0
     ).reset_index()
     rebuild_sheet(wb, "YOY Comparison", yoy)
-
     
     # ---------------- BALANCE RECONCILIATION ----------------
     try:
@@ -1618,9 +1659,8 @@ def main():
 
 # --- save workbook (your existing code follows) ---
 
-    wb.save(dashboard_path)
     append_ingest_log(log_ws, dashboard_path, sig, len(df), total_added)
-
+    wb.save(dashboard_path)
     if years_touched:
         print(f"Done. Updated year sheets: {', '.join(sorted(set(years_touched)))} in {dashboard_path.name}.")
     else:
