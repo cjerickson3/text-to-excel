@@ -23,6 +23,11 @@ except Exception:  # pragma: no cover
 
 
 # ---------- Regex helpers ----------
+ANCHORS = [
+    r"\bSAVINGS SUMMARY\b",
+    r"\bSAVINGS ACCOUNT\b",
+    r"\bDAILY ENDING BALANCE\b",   # as a conservative fallback
+]
 
 AMOUNT_RE = re.compile(r"\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}")
 
@@ -78,9 +83,24 @@ def _page_texts(pdf) -> List[str]:
         out.append(p.extract_text() or "")
     return out
 
-
 # ---------- Public API ----------
-
+def find_section_ycut(pdf_path: str, page_index: int, anchors=ANCHORS):
+    """
+    Return a float y_cut (device space) on page_index where Checking should stop.
+    If no anchor found, return None.
+    """
+    with pdfplumber.open(pdf_path) as pdf:
+        page = pdf.pages[page_index]
+        text_objs = page.extract_words(use_text_flow=True, keep_blank_chars=False) or []
+        patt = re.compile("|".join(anchors), flags=re.IGNORECASE)
+        # Find the earliest y0 where an anchor occurs
+        y_hits = []
+        for w in text_objs:
+            if patt.search(w.get("text", "")):
+                y_hits.append(w.get("top"))
+        if not y_hits:
+            return None
+        return min(y_hits)
 def parse_pdf_totals(pdf_path: str) -> Dict[str, Optional[float]]:
     """
     Extracts (begin_balance, end_balance, total_deposits, total_withdrawals)
@@ -187,6 +207,7 @@ def verify_statement_pdf(
     max_fail: int = 50,
     debug: bool = False,
 ) -> Dict[str, Any]:
+   
     """
     Check that each row's (date token, amount token) both appear on the SAME page of the PDF.
     If within_checking_band=True, we only search inside the Checking band on each page
@@ -276,6 +297,26 @@ def verify_statement_pdf(
     except Exception as e:
         report["summary"] = {"status": "error", "reason": str(e)}
         return report
+def get_checking_band_lines(pdf_path: str):
+    """
+    Returns a list of text lines containing ONLY the Checking 'band' across pages:
+    - Top is the first Checking-section header on that page (Deposits & Additions, Checks Paid, etc.)
+    - Bottom is the first Savings banner (Savings Summary / Chase Savings) or page bottom.
+    If nothing is detected, returns [].
+    """
+    if pdfplumber is None:
+        return []
 
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            # Reuse the internal band extractor so Savings-only regions are dropped
+            page_texts = _page_texts_checking_band(pdf)  # already defined above
+            merged = "\n".join([t for t in page_texts if t])  # skip empty pages
+            lines = (merged or "").splitlines()
+            # normalize NBSP variants so your regexes behave the same as pdftotext
+            normed = [l.replace("\u00A0"," ").replace("\u2007"," ").replace("\u202F"," ") for l in lines]
+            return normed
+    except Exception:
+        return []
 
 

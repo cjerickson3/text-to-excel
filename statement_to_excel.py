@@ -40,7 +40,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 import hashlib
 from datetime import datetime
-from verifiers.pdf_plumber_verify import verify_statement_pdf, parse_pdf_totals
+from verifiers.pdf_plumber_verify import verify_statement_pdf, parse_pdf_totals, get_checking_band_lines
 from verifiers.pdf_page_cuts import pdf_clip_checking_pages
 
 CALLS = {"parse_dep_add": 0}  # put at module top, once
@@ -1346,8 +1346,21 @@ def main():
 
     # Read raw statement text
     lines = input_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+
+    # 1) Coarse page-level clip (existing behavior)
     if args.pdf:
         lines = pdf_clip_checking_pages(args.pdf, lines, debug=args.debug)
+
+    # 2) NEW: Intra-page clip using pdfplumber (Checking band only)
+    #    This removes Savings that start mid-page (no Savings banner in text beforehand).
+    if args.pdf:
+        band_lines = get_checking_band_lines(args.pdf)
+        if band_lines:
+            if args.debug:
+                print(f"[pdf-band] Replacing lines with Checking-band-only text "
+                    f"({len(band_lines)} lines vs {len(lines)} original-after-page-clip).")
+            lines = band_lines
+    # 3) Keep the text-only guard as a final safety net
     lines = clip_to_checking_lines(lines, debug=args.debug)
 
     # Parse balances & statement end date
