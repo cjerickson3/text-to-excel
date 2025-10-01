@@ -46,3 +46,6 @@ data/raw/
 .env
 *.key
 *.pem
+
+# local backups of verifiers
+verifiers/*-old.py

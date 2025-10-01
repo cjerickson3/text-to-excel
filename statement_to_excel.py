@@ -856,11 +856,12 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
     while i < N:
         raw = lines[i]
         line = norm(raw)
-
+        is_amt_line = AMT_RE.search(line) is not None  # <— add this once near the top of the loop 
         if not line:
             i += 1
             continue
         # ---- Check-number-first rows (e.g., "2423 ^ 08/27 $859.00") ----
+        
         mchk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
         if mchk:
             mm, dd = map(int, re.split(r'[/-]', mchk.group('mmdd')))
@@ -871,26 +872,25 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
             i += 1
             continue
         # ---- Section headers (explicit) ----
-        if DEP_ADD_HDR.search(line) or re.search(r"\bDEPOSITS?\b.*\b(ADDITIONS?|CREDITS?)\b", line, re.I):
+        if (DEP_ADD_HDR.search(line) or re.search(r"\bDEPOSITS?\b.*\b(ADDITIONS?|CREDITS?)\b", line, re.I)) and not is_amt_line:
             sec_idx = 0
             if debug: print(f"-> header: DEPOSITS at {i+1}")
             i += 1
             continue
-
-        if CHECKS_HEADER.search(line) or re.search(r"\bCHECKS?\s+PAID\b", line, re.I):
+        if (CHECKS_HEADER.search(line) or re.search(r"\bCHECKS?\s+PAID\b", line, re.I)) and not is_amt_line:
             sec_idx = 1
             if debug: print(f"-> header: CHECKS at {i+1}")
             i += 1
             continue
 
-        if ATM_DEBIT_HDR.search(line):
+        if ATM_DEBIT_HDR.search(line) and not is_amt_line:
             sec_idx = 2
             gap_after_atm = False
             if debug: print(f"-> header: ATM/DEBIT at {i+1}")
             i += 1
             continue
 
-        if ELEC_WITH_HDR.search(line):
+        if ELEC_WITH_HDR.search(line) and not is_amt_line:
             sec_idx = 3
             if debug: print(f"-> header: ELECTRONIC at {i+1}")
             i += 1
