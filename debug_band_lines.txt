@@ -1,0 +1,189 @@
+000000714245263
+CUSTOMER SERVICE INFORMATION
+ASSETS
+000000714245263
+32000000010309566310
+October 05, 2018 through November 06, 2018
+JPMorgan Chase Bank, N.A.
+Primary Account:
+P O Box 182051
+Columbus, OH 43218-2051
+Web site: Chase.com
+Service Center: 1-800-935-9935
+00136659DRE 201 219 31118 NNNNNNNNNNN 1 000000000 040000 Deaf and Hard of Hearing: 1-800-242-7383
+Para Espanol: 1-877-312-4273
+LIZ ERICKSON
+International Calls: 1-713-262-1679
+CHRIS ERICKSON
+2425 DELMAR DR
+PLANO TX 75075-7489
+*start*consolidated balance summary2
+CONSOLIDATED BALANCE SUMMARY
+ACCOUNT BEGINNING BALANCE ENDING BALANCE
+Checking & Savings
+THIS PERIOD THIS PERIOD
+Chase Better Banking Checking 000000714245263 $2,454.64 $1,025.19
+Chase Savings 000001197017229 15,382.90 9,564.95
+Total $17,837.54 $10,590.14
+TOTAL ASSETS $17,837.54 $10,590.14
+*end*consolidated balance summary2
+*start*global product
+CHASE BETTER BANKING CHECKING
+LIZ ERICKSON Account Number:
+CHRIS ERICKSON
+**estnadr*t*gsluombaml aprryoduct
+CHECKING SUMMARY
+AMOUNT
+Beginning Balance $2,454.64
+Deposits and Additions 8,555.59
+Checks Paid -4,191.53
+ATM & Debit Card Withdrawals -2,208.06
+Electronic Withdrawals -3,585.45
+Ending Balance $1,025.19
+*end*summary
+*start*post summary message1
+Your account ending in 7229 is linked to this account for overdraft protection.
+Good News. Your Monthly Service Fee was waived because you had at least a $1,500 balance in your Chase Better
+Banking Checking account at the end of the business day before the last day of your statement period or an average daily
+balance of $5,000 in qualifying linked deposits, investments, credit cards, mortgage and other loans during your statement
+period.
+*end*post summary message1
+Page of
+1 6
+October 05, 2018 through November 06, 2018
+Primary Account:
+000000714245263
+*start*deposits and additions
+DEPOSITS AND ADDITIONS
+DATE DESCRIPTION AMOUNT
+10/15 Oasisbatch Payroll PPD ID: 5650786772 $1,678.19
+10/29 Online Transfer From Sav ...7229 Transaction#: 7611610282 5,000.00
+10/30 Oasisbatch Payroll PPD ID: 5650786772 1,803.30
+11/01 New York Life Payroll*** PPD ID: 9595080001 74.10
+Total Deposits and Additions $8,555.59
+*end*deposits and additions
+*start*checks paid section3
+CHECKS PAID
+DATE
+CHECK NO. DESCRIPTION PAID AMOUNT
+2431 ^ 10/09 $77.00
+2432 ^ 10/17 82.25
+2433 Check # 2433 North Texas Toll Checkpaymt Arc ID: 4756004285 10/17 2.53
+2434 ^ 10/09 65.00
+2435 ^ 10/19 77.00
+2436 ^ 11/02 77.00
+2437 ^ 11/06 3,631.75
+2438 ^ 11/05 95.00
+2441 * ^ 11/05 84.00
+Total Checks Paid $4,191.53
+If you see a description in the Checks Paid section, it means that we received only electronic information about the check,
+not the original or an image of the check. As a result, we're not able to return the check to you or show you an image.
+* All of your recent checks may not be on this statement, either because they haven't cleared yet or they were listed on
+one of your previous statements.
+^ An image of this check may be available for you to view on Chase.com.
+*end*checks paid section3
+*start*atm debit withdrawal
+ATM & DEBIT CARD WITHDRAWALS
+DATE DESCRIPTION AMOUNT
+10/05 Card Purchase With Pin 10/05 Homegoods #450 Richardson TX Card 3978 $27.04
+10/05 Recurring Card Purchase 10/04 Netflix.Com Netflix.Com CA Card 3978 24.88
+10/09 Card Purchase 10/04 Plano Plano TX Card 3978 25.50
+10/09 Card Purchase 10/06 Calloway's Nursery 105 Plano TX Card 3978 18.39
+10/09 Card Purchase With Pin 10/06 Tuesday Morning 1107 Murphy TX Card 3978 41.21
+10/09 Card Purchase With Pin 10/06 Racetrac135 Plano TX Card 3978 33.47
+10/09 ATM Withdrawal 10/07 2000 W 15th St Plano TX Card 4396 200.00
+10/09 Card Purchase With Pin 10/08 The UPS Store #6691 Plano TX Card 3978 21.35
+10/09 Card Purchase With Pin 10/08 Kroger 0581 Plano TX Card 3978 97.22
+10/10 Card Purchase 10/09 Scotty P's Plano Plano TX Card 3978 11.90
+10/11 Card Purchase 10/10 Panera Bread #601328 Plano TX Card 3978 25.28
+10/11 Card Purchase With Pin 10/11 Kroger 0581 Plano TX Card 3978 60.87
+10/11 Card Purchase With Pin 10/11 Central Market #546 Plano TX Card 3978 43.49
+10/12 Card Purchase With Pin 10/12 The Home Depot #0524 Lewisville TX Card 3978 16.21
+10/15 Card Purchase 10/13 Afrah Restaurant Richardson TX Card 3978 8.62
+10/15 Card Purchase With Pin 10/15 Wal Wal-Mart Super 111 Plano TX Card 3978 20.12
+10/15 Card Purchase With Pin 10/15 Total Wine And More 50 Plano TX Card 3978 70.84
+10/15 Card Purchase With Pin 10/15 Kroger 0581 Plano TX Card 3978 15.74
+*end*atm de1bit withdraw0al /16 Card Purchase With Pin 10/16 Dsw Creekwalk VI 801 W Plano TX Card 3978 54.11
+Page of
+2 6
+000000714245263
+36000000020309566311
+October 05, 2018 through November 06, 2018
+Primary Account:
+*start*atm debit withdrawal
+(continued)
+ATM & DEBIT CARD WITHDRAWALS
+DATE DESCRIPTION AMOUNT
+10/17 Card Purchase 10/16 Mcalister's Deli 536 Plano TX Card 3978 8.32
+10/17 Card Purchase With Pin 10/17 Gap US 1525 Dallas TX Card 3978 81.04
+10/17 Card Purchase With Pin 10/17 Cost Plus Wld #64 Plano TX Card 3978 14.99
+10/17 Card Purchase With Pin 10/17 Hirschs Specialty Meat Plano TX Card 3978 17.36
+10/18 Card Purchase 10/17 Sq *Town & Country Clea Plano TX Card 3978 29.41
+10/18 Card Purchase With Pin 10/18 Market Street Plano TX Card 3978 14.91
+10/18 Card Purchase W/Cash 10/18 Kroger 0581 Plano TX Card 3978 54.97
+Purchase $14.97 Cash Back $40.00
+10/18 Card Purchase With Pin 10/18 Kroger Fuel Ctr 1581 Plano TX Card 3978 29.71
+10/19 Card Purchase 10/18 Gap US 1521 Plano TX Card 3978 42.17
+10/19 Card Purchase With Pin 10/19 Bedbath&Beyond# 801 We Plano TX Card 3978 37.83
+10/22 Card Purchase 10/20 Rev Car Wash Dallas TX Card 3978 6.00
+10/22 Card Purchase 10/20 Panera Bread #601328 Plano TX Card 3978 24.09
+10/22 Card Purchase 10/21 Buc-Ee's #26 Madisonville TX Card 3978 13.40
+10/22 Card Purchase With Pin 10/21 Buc-Ee's #26 Madisonville TX Card 3978 23.01
+10/22 Card Purchase With Pin 10/21 Aldi 75031 Plano TX Card 4396 14.93
+10/22 Card Purchase With Pin 10/22 Wal-Mart #5449 Missouri City TX Card 3978 9.71
+10/23 Card Purchase 10/22 Hoggs N' Chicks Missouri City TX Card 3978 18.94
+10/24 Card Purchase With Pin 10/24 Buc-Ee's #26 Madisonville TX Card 3978 24.06
+10/25 Card Purchase With Pin 10/25 Walgreens Store 1600 P Plano TX Card 3978 14.06
+10/25 ATM Withdrawal 10/25 2000 W 15th St Plano TX Card 4396 200.00
+10/26 Card Purchase 10/25 Modernmkt Richa 018 Ver Richardson TX Card 3978 19.55
+10/29 Card Purchase With Pin 10/27 Kroger 0581 Plano TX Card 3978 104.06
+10/29 ATM Withdrawal 10/28 2000 W 15th St Plano TX Card 3978 80.00
+10/29 Card Purchase With Pin 10/29 Trader Joe's #402 Qps Plano TX Card 3978 10.74
+10/29 Card Purchase With Pin 10/29 Racetrac 79 Murphy TX Card 3978 28.03
+10/31 Card Purchase 10/30 Sq *Town & Country Clea Plano TX Card 3978 24.85
+10/31 Card Purchase 10/30 LA Madeleine #062 Plano TX Card 3978 11.25
+11/01 Card Purchase With Pin 11/01 Walgreens Store 2001 C Plano TX Card 3978 4.31
+11/02 Card Purchase 11/01 Half Price Books #008 Richardson TX Card 3978 14.71
+11/02 Card Purchase With Pin 11/02 Homegoods #450 Richardson TX Card 3978 28.11
+11/05 Card Purchase 11/02 Modernmkt Richa 018 Ver Richardson TX Card 3978 15.24
+11/05 Card Purchase With Pin 11/03 Marshalls #0480 Plano TX Card 3978 5.40
+11/05 Card Purchase With Pin 11/03 Total Wine And More 50 Plano TX Card 3978 35.68
+11/05 Card Purchase With Pin 11/03 Kroger 0581 Plano TX Card 3978 71.18
+11/05 ATM Withdrawal 11/04 3041 W Parker Rd Plano TX Card 4396 200.00
+11/05 Card Purchase With Pin 11/05 Tom Thumb Store 2554 Plano TX Card 3978 17.63
+11/05 Recurring Card Purchase 11/04 Netflix.Com Netflix.Com CA Card 3978 24.88
+11/06 Card Purchase With Pin 11/06 Trader Joe's #402 Qps Plano TX Card 3978 17.29
+Total ATM & Debit Card Withdrawals $2,208.06
+*end*atm debit withdrawal
+*start*electronic withdrawal
+ELECTRONIC WITHDRAWALS
+DATE DESCRIPTION AMOUNT
+10/09 Unitedhealthone Ins. Prem. PPD ID: 9005900018 $46.46
+10/15 10/14 Online Payment 7574854914 To Bank of America Visa 250.00
+10/15 10/14 Online Payment 7574854935 To Usaa Credit Card 1,000.00
+*end*electro1nic withdraw0al /15 10/14 Online Payment 7574854925 To Digital Federal Credit Union 300.00
+Page of
+3 6
+October 05, 2018 through November 06, 2018
+Primary Account:
+000000714245263
+*start*electronic withdrawal
+(continued)
+ELECTRONIC WITHDRAWALS
+DATE DESCRIPTION AMOUNT
+10/19 10/19 Online Payment 7590446359 To Atmos Energy 33.31
+10/29 10/27 Online Payment 7611617894 To Allstate 500.00
+10/29 10/27 Online Payment 7611617917 To Digital Federal Credit Union 500.00
+10/29 10/27 Online Payment 7611617902 To AT&T Mobility 235.60
+11/01 11/01 Online Payment 7627552319 To Frontier Communications 264.45
+11/01 11/01 Online Payment 7627552304 To City of Plano 85.56
+11/05 Sparrowhawk Sola Echeckpay PPD ID: F472574800 29.00
+11/06 Northwestern Mu Isa Paymnt PPD ID: 9000596067 294.61
+11/06 Unitedhealthone Ins. Prem. PPD ID: 9005900018 46.46
+Total Electronic Withdrawals $3,585.45
+*end*electronic withdrawal
+*start*global product
+CHASE SAVINGS
+CHRIS ERICKSON Account Number: 000001197017229
+OR LIZ ERICKSON
+**estnadr*t*gsluombaml aprryoduct

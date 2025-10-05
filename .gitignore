@@ -49,3 +49,7 @@ data/raw/
 
 # local backups of verifiers
 verifiers/*-old.py
+*.pyc
+*.log
+debug_band_lines.txt
+__pycache__/
