@@ -1293,6 +1293,18 @@ def write_about_sheet(wb, dashboard_path):
             c.font = Font(bold=True)
         except Exception:
             pass
+def _balances_from_account_line(raw_lines):
+    import re
+    pat = re.compile(
+        r"Chase\s+Better\s+Banking\s+Checking\s+\d{6,}\s+\$([0-9,]+\.[0-9]{2})\s+\$([0-9,]+\.[0-9]{2})",
+        re.IGNORECASE
+    )
+    for s in raw_lines:
+        m = pat.search(s)
+        if m:
+            def _f(x): return float(x.replace(",",""))
+            return _f(m.group(1)), _f(m.group(2))
+    return (None, None)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -1350,23 +1362,41 @@ def main():
     # 1) Coarse page-level clip (existing behavior)
     if args.pdf:
         lines = pdf_clip_checking_pages(args.pdf, lines, debug=args.debug)
-
+    pageclip_lines = lines[:]
     # 2) NEW: Intra-page clip using pdfplumber (Checking band only)
     #    This removes Savings that start mid-page (no Savings banner in text beforehand).
     if args.pdf:
         band_lines = get_checking_band_lines(args.pdf)
         if band_lines:
             if args.debug:
-                print(f"[pdf-band] Replacing lines with Checking-band-only text "
-                    f"({len(band_lines)} lines vs {len(lines)} original-after-page-clip).")
-            lines = band_lines
+             print(f"[pdf-band] Replacing lines with Checking-band-only text "
+                   f"({len(band_lines)} lines vs {len(lines)} original-after-page-clip).")
+        lines = band_lines
+    else:
+        if args.debug:
+            print("[pdf-band] No band lines found (pdfplumber missing or anchors not matched); continuing with text-only clip.")
+
+    if args.debug:
+        try:
+            Path("debug_band_lines.txt").write_text("\n".join(lines), encoding="utf-8")
+            print("[pdf-band] wrote debug_band_lines.txt for inspection")
+        except Exception as e:
+            print("[pdf-band] could not write debug_band_lines.txt:", repr(e))
     # 3) Keep the text-only guard as a final safety net
     lines = clip_to_checking_lines(lines, debug=args.debug)
+    if args.debug:
+        Path("debug_band_lines.txt").write_text("\n".join(lines), encoding="utf-8")
+        print("[pdf-band] wrote debug_band_lines.txt (POST-CLIP) for inspection")
 
     # Parse balances & statement end date
     begin_bal, end_bal = parse_begin_end_balances(lines)
     end_year, end_month = parse_end_date_from_filename(input_path)
-
+    begin_fallback, end_fallback = _balances_from_account_line(pageclip_lines)
+    # If your normal balance parsing returns None for either, fill it from the fallback:
+    if begin_bal is None and begin_fallback is not None:
+        begin_bal = begin_fallback
+    if end_bal is None and end_fallback is not None:
+        end_bal = end_fallback
     if args.debug:
         # Spot-check: show a small window around Deposits header
         for i, raw in enumerate(lines, 1):
@@ -1586,7 +1616,8 @@ def main():
         if "Statement End" in recon_df.columns and not recon_df.empty:
             recon_df = recon_df[recon_df["Statement End"] != new_row["Statement End"]]
         row_df = pd.DataFrame([{**{c: pd.NA for c in recon_df.columns}, **new_row}], columns=recon_df.columns)
-        recon_df = pd.concat([recon_df, row_df], ignore_index=True)
+        if row_df is not None and not row_df.empty:
+            recon_df = pd.concat([recon_df, row_df], ignore_index=True)
 
         # Sort by date
         if not recon_df.empty and "Statement End" in recon_df.columns:
@@ -1622,7 +1653,6 @@ def main():
                 within_checking_band=True,   # <<< important
                 debug=args.debug,
             )
-
             # Write a small sheet with the summary + issues
             name = "PDF Verify"
             if name in wb.sheetnames:
@@ -1632,6 +1662,7 @@ def main():
 
             ws.append(["Key","Value"])
             summ = report.get("summary", {})
+            print(f"[verify-pdf] status={summ.get('status')} reason={summ.get('reason')}")
             for k in ["status","rows_checked","rows_matched_same_page","rows_missing",
                       "begin_balance_txt","begin_balance_calc","end_balance_txt","end_balance_calc",
                       "total_deposits_txt","total_withdrawals_txt"]:

@@ -48,7 +48,25 @@ TOT_WD_RE = re.compile(
     r"Total\s+(?:ATM\s*&\s*Debit\s*Card\s+)?Withdrawals(?:\s+and\s+Debits)?\s+(\$?\s*\d{1,3}(?:,\d{3})*\.\d{2})",
     re.I,
 )
+# Include header/summary anchors so the band starts ABOVE transaction sections
+TOP_ANCHORS = [
+    r"\bCONSOLIDATED\s+BALANCE\s+SUMMARY\b",
+    r"\bCHECKING\s+SUMMARY\b",
+    r"\bCHASE\s+BETTER\s+BANKING\s+CHECKING\b",
+    r"\bEnding\s+Balance\s+\$[0-9,]+\.[0-9]{2}\b",
+    # Account line with both balances on one line:
+    r"Chase\s+Better\s+Banking\s+Checking\s+\d{6,}\s+\$[0-9,]+\.[0-9]{2}\s+\$[0-9,]+\.[0-9]{2}",
+    # As a conservative fallback, allow the table header line to be a top anchor
+    r"\bDATE\s+DESCRIPTION\s+AMOUNT\b",
+]
 
+BOTTOM_ANCHORS = [
+    r"\bSAVINGS\s+SUMMARY\b",
+    r"\bCHASE\s+SAVINGS\b",
+    r"\bSAVINGS\s+ACCOUNT\b",
+]
+TOP_RE    = re.compile("|".join(TOP_ANCHORS), flags=re.IGNORECASE)
+BOTTOM_RE = re.compile("|".join(BOTTOM_ANCHORS), flags=re.IGNORECASE)
 
 # ---------- Small utilities ----------
 
@@ -82,6 +100,20 @@ def _page_texts(pdf) -> List[str]:
     for p in pdf.pages:
         out.append(p.extract_text() or "")
     return out
+def _extract_cropped_text(page, bbox, *, x_tol=2, y_tol=2):
+    """
+    bbox = (x0, y0, x1, y1) in PDF coordinate space (origin top-left).
+    Returns '' on any issue; never raises inside verify path.
+    """
+    x0, y0, x1, y1 = bbox
+    # Guard weird coords
+    if x0 >= x1 or y0 >= y1:
+        return ""
+    try:
+        band = page.crop(bbox)
+        return band.extract_text(x_tolerance=x_tol, y_tolerance=y_tol) or ""
+    except Exception:
+        return ""
 
 # ---------- Public API ----------
 def find_section_ycut(pdf_path: str, page_index: int, anchors=ANCHORS):
@@ -151,52 +183,37 @@ def parse_pdf_totals(pdf_path: str) -> Dict[str, Optional[float]]:
 # Returns a list (same length as pdf.pages) with the text cropped to the Checking band.
 # If a page has no Checking header, we return "" for that page (so Savings-only pages won't match).
 def _page_texts_checking_band(pdf):
-    # Checking headers (also matches "(continued)")
-    _CHECKING_HDRS = [
-        r"DEPOSITS\s+AND\s+ADDITIONS",
-        r"CHECKS?\s+PAID",
-        r"ATM\s*&\s*DEBIT\s*CARD\s+WITHDRAWALS",
-        r"ELECTRONIC\s+WITHDRAWALS",
-    ]
-    # Savings banners
-    _SAVINGS_BANNERS = [
-        r"SAVINGS\s+SUMMARY",
-        r"CHASE\s+SAVINGS",
-        r"^SAVINGS\b",
-    ]
-    _HDR_RE = [re.compile(p, re.I) for p in _CHECKING_HDRS]
-    _SAV_RE = [re.compile(p, re.I) for p in _SAVINGS_BANNERS]
-
-    def _find_y(page, pats):
-        words = page.extract_words() or []
-        # group by line (rounded 'top'), then test each line string against any pattern
-        by_top = {}
-        for w in words:
-            top = round(float(w.get("top", 0.0)), 1)
-            row = by_top.setdefault(top, {"text": [], "top": top})
-            row["text"].append(w.get("text", ""))
-        hits = []
-        for row in sorted(by_top.values(), key=lambda r: r["top"]):
-            line = " ".join(row["text"])
-            if any(rx.search(line) for rx in pats):
-                hits.append(row["top"])
-        return hits
-
-    out = []
+    page_texts = []
     for page in pdf.pages:
-        ys_check = _find_y(page, _HDR_RE)
-        if not ys_check:
-            out.append("")  # drop page from consideration
+        words = page.extract_words(use_text_flow=True, keep_blank_chars=False) or []
+
+        # find y positions for top/bottom anchors
+        y_tops = [w["top"] for w in words if TOP_RE.search(w.get("text",""))]
+        y_bottoms = [w["top"] for w in words if BOTTOM_RE.search(w.get("text",""))]
+
+        # choose bounds
+        # start as high on the page as possible, but not above content
+        if y_tops:
+            y0 = max(0.0, min(y_tops) - 24.0)   # small upward padding to capture preceding line
+        else:
+            # fallback: existing behavior (e.g., your prior checking header y)
+            y0 = 0.0
+
+        if y_bottoms:
+            y1 = min(y_bottoms)                 # first savings/banner → stop before Savings
+        else:
+            y1 = page.height                    # whole remainder of page
+
+        if y1 <= y0 + 2:  # sanity guard: empty or inverted
+            page_texts.append("")
             continue
-        y_start = min(ys_check)
-        ys_sav  = _find_y(page, _SAV_RE)
-        y_end   = min(ys_sav) if ys_sav else page.height
-        if y_end <= y_start:
-            y_end = page.height
-        band = (0, y_start, page.width, y_end)
-        txt  = (page.crop(band).extract_text() or "")
-        out.append(txt)
-    return out
+
+        # crop and extract
+        bbox = (0, y0, page.width, y1)
+        txt = _extract_cropped_text(page, bbox, x_tol=2, y_tol=2)
+        page_texts.append(txt)
+    return page_texts
+
 def verify_statement_pdf(
     pdf_path: str,
     df,  # pandas DataFrame with columns: Date (datetime64), Description (str), Amount (float)
@@ -295,6 +312,10 @@ def verify_statement_pdf(
             return report
 
     except Exception as e:
+        if debug:
+            import traceback
+            print("[verify-pdf] Exception during verification:", repr(e))
+            traceback.print_exc()
         report["summary"] = {"status": "error", "reason": str(e)}
         return report
 def get_checking_band_lines(pdf_path: str):
