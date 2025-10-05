@@ -3,6 +3,24 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Statement_to_excel (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/statement_to_excel.py",
+      "cwd": "${workspaceFolder}",             // ← add this
+      "console": "integratedTerminal",
+      "args": [
+        "--debug",
+        "--audit",
+        "--auto-adjust",
+        "--input", "./History_text/20181196-raw.txt",
+        "--dashboard", "Chase_Budget_Dashboard.xlsx"
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true,
+      "env": { "PYTHONUTF8": "1" }
+    },  
+    {
       "name": "Run text-to-excel.py (debug)",
       "type": "debugpy",
       "request": "launch",

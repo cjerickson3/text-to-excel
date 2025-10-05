@@ -7,6 +7,10 @@ __pycache__/
 .venv/
 venv/
 env/
+# Secrets (use .env.example to share keys schema)
+.env
+*.key
+*.pem
 
 # Packaging / build
 build/
@@ -42,14 +46,5 @@ data/raw/
 **/History_text/**
 **/Chase_history/**
 
-# Secrets (use .env.example to share keys schema)
-.env
-*.key
-*.pem
-
 # local backups of verifiers
-verifiers/*-old.py
-*.pyc
-*.log
-debug_band_lines.txt
-__pycache__/
+debug_band_lines*.txt
