@@ -36,6 +36,7 @@ htmlcov/
 .coverage*
 *.log
 Chase_Budget_Dashboard*.xlsx
+debug_band_lines.txt
 *_Audit*.xlsx
 # Project-specific artifacts
 templates/

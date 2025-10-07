@@ -1,60 +1,10 @@
-000000714245263
-CUSTOMER SERVICE INFORMATION
-ASSETS
-000000714245263
-32000000010309566310
-October 05, 2018 through November 06, 2018
-JPMorgan Chase Bank, N.A.
-Primary Account:
-P O Box 182051
-Columbus, OH 43218-2051
-Web site: Chase.com
-Service Center: 1-800-935-9935
-00136659DRE 201 219 31118 NNNNNNNNNNN 1 000000000 040000 Deaf and Hard of Hearing: 1-800-242-7383
-Para Espanol: 1-877-312-4273
-LIZ ERICKSON
-International Calls: 1-713-262-1679
-CHRIS ERICKSON
-2425 DELMAR DR
-PLANO TX 75075-7489
-*start*consolidated balance summary2
 CONSOLIDATED BALANCE SUMMARY
+ASSETS
 ACCOUNT BEGINNING BALANCE ENDING BALANCE
 Checking & Savings
 THIS PERIOD THIS PERIOD
 Chase Better Banking Checking 000000714245263 $2,454.64 $1,025.19
 Chase Savings 000001197017229 15,382.90 9,564.95
-Total $17,837.54 $10,590.14
-TOTAL ASSETS $17,837.54 $10,590.14
-*end*consolidated balance summary2
-*start*global product
-CHASE BETTER BANKING CHECKING
-LIZ ERICKSON Account Number:
-CHRIS ERICKSON
-**estnadr*t*gsluombaml aprryoduct
-CHECKING SUMMARY
-AMOUNT
-Beginning Balance $2,454.64
-Deposits and Additions 8,555.59
-Checks Paid -4,191.53
-ATM & Debit Card Withdrawals -2,208.06
-Electronic Withdrawals -3,585.45
-Ending Balance $1,025.19
-*end*summary
-*start*post summary message1
-Your account ending in 7229 is linked to this account for overdraft protection.
-Good News. Your Monthly Service Fee was waived because you had at least a $1,500 balance in your Chase Better
-Banking Checking account at the end of the business day before the last day of your statement period or an average daily
-balance of $5,000 in qualifying linked deposits, investments, credit cards, mortgage and other loans during your statement
-period.
-*end*post summary message1
-Page of
-1 6
-October 05, 2018 through November 06, 2018
-Primary Account:
-000000714245263
-*start*deposits and additions
-DEPOSITS AND ADDITIONS
 DATE DESCRIPTION AMOUNT
 10/15 Oasisbatch Payroll PPD ID: 5650786772 $1,678.19
 10/29 Online Transfer From Sav ...7229 Transaction#: 7611610282 5,000.00
@@ -65,7 +15,8 @@ Total Deposits and Additions $8,555.59
 *start*checks paid section3
 CHECKS PAID
 DATE
-CHECK NO. DESCRIPTION PAID AMOUNT
+AMOUNT
+CHECK NO. DESCRIPTION PAID
 2431 ^ 10/09 $77.00
 2432 ^ 10/17 82.25
 2433 Check # 2433 North Texas Toll Checkpaymt Arc ID: 4756004285 10/17 2.53
@@ -103,18 +54,13 @@ DATE DESCRIPTION AMOUNT
 10/15 Card Purchase With Pin 10/15 Wal Wal-Mart Super 111 Plano TX Card 3978 20.12
 10/15 Card Purchase With Pin 10/15 Total Wine And More 50 Plano TX Card 3978 70.84
 10/15 Card Purchase With Pin 10/15 Kroger 0581 Plano TX Card 3978 15.74
-*end*atm de1bit withdraw0al /16 Card Purchase With Pin 10/16 Dsw Creekwalk VI 801 W Plano TX Card 3978 54.11
+de1bit withdraw0al /16 Card Purchase With Pin 10/16 Dsw Creekwalk VI 801 W Plano TX Card 3978 54.11
+*end*atm
 Page of
 2 6
-000000714245263
-36000000020309566311
-October 05, 2018 through November 06, 2018
-Primary Account:
-*start*atm debit withdrawal
-(continued)
-ATM & DEBIT CARD WITHDRAWALS
 DATE DESCRIPTION AMOUNT
 10/17 Card Purchase 10/16 Mcalister's Deli 536 Plano TX Card 3978 8.32
+36000000020309566311
 10/17 Card Purchase With Pin 10/17 Gap US 1525 Dallas TX Card 3978 81.04
 10/17 Card Purchase With Pin 10/17 Cost Plus Wld #64 Plano TX Card 3978 14.99
 10/17 Card Purchase With Pin 10/17 Hirschs Specialty Meat Plano TX Card 3978 17.36
@@ -161,15 +107,10 @@ DATE DESCRIPTION AMOUNT
 10/09 Unitedhealthone Ins. Prem. PPD ID: 9005900018 $46.46
 10/15 10/14 Online Payment 7574854914 To Bank of America Visa 250.00
 10/15 10/14 Online Payment 7574854935 To Usaa Credit Card 1,000.00
-*end*electro1nic withdraw0al /15 10/14 Online Payment 7574854925 To Digital Federal Credit Union 300.00
+*end*electro1nic withdraw0al /15
+10/14 Online Payment 7574854925 To Digital Federal Credit Union 300.00
 Page of
 3 6
-October 05, 2018 through November 06, 2018
-Primary Account:
-000000714245263
-*start*electronic withdrawal
-(continued)
-ELECTRONIC WITHDRAWALS
 DATE DESCRIPTION AMOUNT
 10/19 10/19 Online Payment 7590446359 To Atmos Energy 33.31
 10/29 10/27 Online Payment 7611617894 To Allstate 500.00
@@ -184,6 +125,3 @@ Total Electronic Withdrawals $3,585.45
 *end*electronic withdrawal
 *start*global product
 CHASE SAVINGS
-CHRIS ERICKSON Account Number: 000001197017229
-OR LIZ ERICKSON
-**estnadr*t*gsluombaml aprryoduct

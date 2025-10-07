@@ -21,14 +21,17 @@ try:
 except Exception:  # pragma: no cover
     pdfplumber = None
 
-
 # ---------- Regex helpers ----------
-ANCHORS = [
-    r"\bSAVINGS SUMMARY\b",
-    r"\bSAVINGS ACCOUNT\b",
-    r"\bDAILY ENDING BALANCE\b",   # as a conservative fallback
+# Tolerant “row-level” predicates
+TOP_PATTS = [
+    re.compile(r'\bCHECK(ING)?\b.*\bSUMMARY\b', re.I),           # CHECKING SUMMARY
+    re.compile(r'\bCONSOLIDATED\b.*\bSUMMARY\b', re.I),          # CONSOLIDATED BALANCE SUMMARY
+    re.compile(r'\bDATE\b.*\bAMOUNT\b', re.I),                   # DATE ... AMOUNT (table header)
 ]
-
+BOTTOM_PATTS = [
+    re.compile(r'\bSAVINGS\b.*\bSUMMARY\b', re.I),               # SAVINGS SUMMARY
+    re.compile(r'\bCHASE\b.*\bSAVINGS\b', re.I),                 # CHASE SAVINGS
+]
 AMOUNT_RE = re.compile(r"\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}")
 
 BEGIN_BAL_RE = re.compile(
@@ -48,25 +51,8 @@ TOT_WD_RE = re.compile(
     r"Total\s+(?:ATM\s*&\s*Debit\s*Card\s+)?Withdrawals(?:\s+and\s+Debits)?\s+(\$?\s*\d{1,3}(?:,\d{3})*\.\d{2})",
     re.I,
 )
-# Include header/summary anchors so the band starts ABOVE transaction sections
-TOP_ANCHORS = [
-    r"\bCONSOLIDATED\s+BALANCE\s+SUMMARY\b",
-    r"\bCHECKING\s+SUMMARY\b",
-    r"\bCHASE\s+BETTER\s+BANKING\s+CHECKING\b",
-    r"\bEnding\s+Balance\s+\$[0-9,]+\.[0-9]{2}\b",
-    # Account line with both balances on one line:
-    r"Chase\s+Better\s+Banking\s+Checking\s+\d{6,}\s+\$[0-9,]+\.[0-9]{2}\s+\$[0-9,]+\.[0-9]{2}",
-    # As a conservative fallback, allow the table header line to be a top anchor
-    r"\bDATE\s+DESCRIPTION\s+AMOUNT\b",
-]
 
-BOTTOM_ANCHORS = [
-    r"\bSAVINGS\s+SUMMARY\b",
-    r"\bCHASE\s+SAVINGS\b",
-    r"\bSAVINGS\s+ACCOUNT\b",
-]
-TOP_RE    = re.compile("|".join(TOP_ANCHORS), flags=re.IGNORECASE)
-BOTTOM_RE = re.compile("|".join(BOTTOM_ANCHORS), flags=re.IGNORECASE)
+PADDING_Y = 2.0  # avoid cropping through baselines
 
 # ---------- Small utilities ----------
 
@@ -94,12 +80,6 @@ def _mk_date_tokens(date_str: str) -> List[str]:
     dd = date_str[8:10]
     return [f"{mm}/{dd}", f"{int(mm)}/{int(dd)}", f"{mm}-{dd}", f"{int(mm)}-{int(dd)}"]
 
-
-def _page_texts(pdf) -> List[str]:
-    out: List[str] = []
-    for p in pdf.pages:
-        out.append(p.extract_text() or "")
-    return out
 def _extract_cropped_text(page, bbox, *, x_tol=2, y_tol=2):
     """
     bbox = (x0, y0, x1, y1) in PDF coordinate space (origin top-left).
@@ -114,25 +94,169 @@ def _extract_cropped_text(page, bbox, *, x_tol=2, y_tol=2):
         return band.extract_text(x_tolerance=x_tol, y_tolerance=y_tol) or ""
     except Exception:
         return ""
+def _extract_cropped_lines(page, bbox, *, x_tol=2, y_tol=1.0):
+    """
+    Convert a cropped region into stable text rows using pdfplumber's words.
+    Falls back to extract_text() if needed.
+    """
+    x0, y0, x1, y1 = bbox
+    # pad vertical bounds slightly
+    y0p = max(0, y0 - PADDING_Y)
+    y1p = min(page.height, y1 + PADDING_Y)
+    if x0 >= x1 or y0p >= y1p:
+        return []
 
+    try:
+        band = page.crop((x0, y0p, x1, y1p))
+        words = band.extract_words(
+            x_tolerance=x_tol,
+            y_tolerance=y_tol,
+            use_text_flow=False,
+            keep_blank_chars=False,
+        ) or []
+        if not words:
+            txt = band.extract_text(x_tolerance=x_tol, y_tolerance=y_tol) or ""
+            return txt.splitlines()
+
+        # group words into rows by quantized 'top'
+        buckets = {}
+        q = max(0.1, y_tol)
+        for w in words:
+            key = int(round(w["top"] / q))
+            buckets.setdefault(key, []).append(w)
+
+        lines = []
+        for key in sorted(buckets):
+            row = sorted(buckets[key], key=lambda w: w["x0"])
+            lines.append(" ".join(w["text"] for w in row))
+        return lines
+    except Exception:
+        return []   
+_hdr_end_then_date = re.compile(r'^(\*end\*[\s\S]*?)\s+(\d{1,2}/\d{2}\b)', re.IGNORECASE) 
+def _split_header_joined_lines(lines):
+    """
+    If a line starts with '*end*... <date>' because two lines merged,
+    split into two lines so parsing sees the date at line start.
+    """
+    fixed = []
+    for ln in lines:
+        m = _hdr_end_then_date.match(ln)
+        if m:
+            fixed.append(m.group(1))      # header end on its own line
+            fixed.append(m.group(2) + ln[m.end(2):].rstrip())  # date line
+        else:
+            fixed.append(ln)
+    return fixed
+# --- top of file ---
+def _page_rows(page, *, x_tol=2, y_tol=1.0):
+    """
+    Return list of (y_top, row_text) by grouping words that share a similar top.
+    """
+    words = page.extract_words(
+        x_tolerance=x_tol, y_tolerance=y_tol,
+        use_text_flow=False, keep_blank_chars=False
+    ) or []
+    if not words:
+        return []
+
+    buckets = {}
+    q = max(0.1, y_tol)
+    for w in words:
+        key = int(round(w["top"] / q))
+        buckets.setdefault(key, []).append(w)
+
+    rows = []
+    for key in sorted(buckets):
+        row = sorted(buckets[key], key=lambda w: w["x0"])
+        txt = " ".join(w["text"] for w in row)
+        y_top = min(w["top"] for w in row)
+        rows.append((y_top, txt))
+    return rows
+
+def _find_row_y(rows, patterns, *, min_y=0.0):
+    for y, text in rows:
+        if y <= min_y:
+            continue
+        if any(p.search(text) for p in patterns):
+            return y
+    return None
+
+def _compute_checking_band_y(page):
+    """
+    Discover [y0,y1] using row-level text:
+      y0 = first row that looks like a Checking header or table header
+      y1 = first Savings banner row *below y0*, else page bottom
+    """
+    rows = _page_rows(page, x_tol=2, y_tol=1.0)
+    if not rows:
+        return (None, None)
+
+    y0 = _find_row_y(rows, TOP_PATTS)
+    if y0 is None:
+        # NEW: lightweight debug—peek first 8 rows to see what we missed
+        # (guard so verify() doesn't spam unless debug=True in caller)
+        return (None, None)
+
+    y1 = _find_row_y(rows, BOTTOM_PATTS, min_y=y0)
+    if y1 is None:
+        y1 = float(page.height)
+
+    return (y0, y1)
+
+def _page_texts(pdf, *, x_tol=2, y_tol=1.0) -> list[str]:
+    """
+    Return a list of strings, one per PDF page (full page text).
+    Prefers word-rows for stability; falls back to extract_text().
+    """
+    texts: list[str] = []
+    for page in pdf.pages:
+        rows = _page_rows(page, x_tol=x_tol, y_tol=y_tol)  # uses your existing _page_rows
+        if rows:
+            texts.append("\n".join(t for _, t in rows))
+        else:
+            txt = page.extract_text(x_tolerance=x_tol, y_tolerance=y_tol) or ""
+            texts.append(txt)
+    return texts
+def _page_texts_checking_band(pdf, *, debug: bool = False) -> list[str]:
+    """
+    Return a list of strings, one per page, containing only the 'Checking' band text.
+    Empty string for pages with no Checking band.
+    """
+    page_texts: list[str] = []
+    for i, page in enumerate(pdf.pages, start=1):
+        y0, y1 = _compute_checking_band_y(page)
+        if y0 is None or y1 is None or y1 <= y0:
+            if debug:
+                print(f"[pdf-band] page {i}: no checking band detected; skipped")
+            page_texts.append("")  # keep page indexing
+            continue
+
+        lines = _extract_cropped_lines(page, (0, y0, float(page.width), y1), x_tol=2, y_tol=1.0)
+        if debug:
+            print(f"[pdf-band] page {i}: band {y0:.1f}..{y1:.1f}, lines={len(lines)}")
+        lines = _split_header_joined_lines(lines)
+        page_texts.append("\n".join(lines))
+
+    if debug:
+        print(f"[pdf-band] built texts for {len(page_texts)} pages")
+    return page_texts
+
+ 
 # ---------- Public API ----------
-def find_section_ycut(pdf_path: str, page_index: int, anchors=ANCHORS):
-    """
-    Return a float y_cut (device space) on page_index where Checking should stop.
-    If no anchor found, return None.
-    """
+def get_checking_band_lines(pdf_path: str, *, debug: bool = False) -> list[str]:
+    import pdfplumber
     with pdfplumber.open(pdf_path) as pdf:
-        page = pdf.pages[page_index]
-        text_objs = page.extract_words(use_text_flow=True, keep_blank_chars=False) or []
-        patt = re.compile("|".join(anchors), flags=re.IGNORECASE)
-        # Find the earliest y0 where an anchor occurs
-        y_hits = []
-        for w in text_objs:
-            if patt.search(w.get("text", "")):
-                y_hits.append(w.get("top"))
-        if not y_hits:
-            return None
-        return min(y_hits)
+        page_texts = _page_texts_checking_band(pdf, debug=debug)
+    # Flatten per-page strings into individual lines
+    lines: list[str] = []
+    for txt in page_texts:
+        if not txt:
+            continue
+        lines.extend(txt.splitlines())
+    if debug:
+        print(f"[pdf-band] built {len(lines)} lines from checking bands across {len(page_texts)} pages")
+    return lines
+
 def parse_pdf_totals(pdf_path: str) -> Dict[str, Optional[float]]:
     """
     Extracts (begin_balance, end_balance, total_deposits, total_withdrawals)
@@ -179,40 +303,6 @@ def parse_pdf_totals(pdf_path: str) -> Dict[str, Optional[float]]:
             "total_deposits": None,
             "total_withdrawals": None,
         }
-# --- Checking-band text extractor (per page) ---
-# Returns a list (same length as pdf.pages) with the text cropped to the Checking band.
-# If a page has no Checking header, we return "" for that page (so Savings-only pages won't match).
-def _page_texts_checking_band(pdf):
-    page_texts = []
-    for page in pdf.pages:
-        words = page.extract_words(use_text_flow=True, keep_blank_chars=False) or []
-
-        # find y positions for top/bottom anchors
-        y_tops = [w["top"] for w in words if TOP_RE.search(w.get("text",""))]
-        y_bottoms = [w["top"] for w in words if BOTTOM_RE.search(w.get("text",""))]
-
-        # choose bounds
-        # start as high on the page as possible, but not above content
-        if y_tops:
-            y0 = max(0.0, min(y_tops) - 24.0)   # small upward padding to capture preceding line
-        else:
-            # fallback: existing behavior (e.g., your prior checking header y)
-            y0 = 0.0
-
-        if y_bottoms:
-            y1 = min(y_bottoms)                 # first savings/banner → stop before Savings
-        else:
-            y1 = page.height                    # whole remainder of page
-
-        if y1 <= y0 + 2:  # sanity guard: empty or inverted
-            page_texts.append("")
-            continue
-
-        # crop and extract
-        bbox = (0, y0, page.width, y1)
-        txt = _extract_cropped_text(page, bbox, x_tol=2, y_tol=2)
-        page_texts.append(txt)
-    return page_texts
 
 def verify_statement_pdf(
     pdf_path: str,
@@ -318,26 +408,4 @@ def verify_statement_pdf(
             traceback.print_exc()
         report["summary"] = {"status": "error", "reason": str(e)}
         return report
-def get_checking_band_lines(pdf_path: str):
-    """
-    Returns a list of text lines containing ONLY the Checking 'band' across pages:
-    - Top is the first Checking-section header on that page (Deposits & Additions, Checks Paid, etc.)
-    - Bottom is the first Savings banner (Savings Summary / Chase Savings) or page bottom.
-    If nothing is detected, returns [].
-    """
-    if pdfplumber is None:
-        return []
-
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            # Reuse the internal band extractor so Savings-only regions are dropped
-            page_texts = _page_texts_checking_band(pdf)  # already defined above
-            merged = "\n".join([t for t in page_texts if t])  # skip empty pages
-            lines = (merged or "").splitlines()
-            # normalize NBSP variants so your regexes behave the same as pdftotext
-            normed = [l.replace("\u00A0"," ").replace("\u2007"," ").replace("\u202F"," ") for l in lines]
-            return normed
-    except Exception:
-        return []
-
 

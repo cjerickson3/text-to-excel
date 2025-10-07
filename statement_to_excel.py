@@ -56,6 +56,14 @@ AMT_RE = re.compile(r"""
 
 SUBTOTAL_RE = re.compile(r"^\s*Total\s+", re.I)
 HEADER_RE = re.compile(r"^(DATE|DESCRIPTION|AMOUNT)\b", re.I)
+TOP_RE = re.compile(
+    r'(CHECKING SUMMARY|CONSOLIDATED BALANCE SUMMARY|DATE\s+DESCRIPTION\s+AMOUNT)',
+    re.IGNORECASE
+)
+BOTTOM_RE = re.compile(
+    r'(SAVINGS SUMMARY|CHASE\s+SAVINGS)',
+    re.IGNORECASE
+)
 #
 
 # tolerant date at start: MM/DD or M-D (optionally /YYYY) but with real month/day ranges
@@ -369,13 +377,23 @@ def grab_date_run(lines, start_idx, *, debug=False):
 
     if debug: print(f"[TRACE] collected {len(out)} date-lines in this run")
     return out
-def _count_date_lines(lines_slice: list[str]) -> int:
-    c = 0
-    for L in lines_slice:
-        x = _norm(L)
-        if DATE_TOKEN.match(x) or DATE_SEARCH.search(x):
-            c += 1
-    return c
+_HDR_END_THEN_DATE = re.compile(r'(\*end\*[\s\S]*?)\s+(\d{1,2}/\d{2}\b)', re.IGNORECASE)
+
+def _deglue_header_date(seq: list[str]) -> list[str]:
+    """Split lines like '*end*...  MM/DD ...' into two lines; no-ops otherwise."""
+    out = []
+    for ln in seq:
+        m = _HDR_END_THEN_DATE.search(ln)
+        if m:
+            out.append(m.group(1).rstrip())
+            out.append((m.group(2) + ln[m.end(2):]).rstrip())
+        else:
+            out.append(ln)
+    return out
+
+def _count_date_lines(seq: list[str]) -> int:
+    return sum(1 for ln in seq if re.match(r'^\d{1,2}/\d{2}\b', ln))
+
 #---
 def find_deposits_window(lines: list[str], *, debug: bool=False) -> tuple[int|None, int|None, list[str]]:
     """
@@ -1362,26 +1380,41 @@ def main():
     # 1) Coarse page-level clip (existing behavior)
     if args.pdf:
         lines = pdf_clip_checking_pages(args.pdf, lines, debug=args.debug)
-    pageclip_lines = lines[:]
+
+    def _count_date_lines(seq):
+        return sum(1 for ln in seq if re.match(r'^\d{1,2}/\d{2}\b', ln))
+    
+    # ---- the intra-page clip block ----
+    pageclip_lines = lines[:]  # keep a fallback snapshot
     # 2) NEW: Intra-page clip using pdfplumber (Checking band only)
-    #    This removes Savings that start mid-page (no Savings banner in text beforehand).
+#    This removes Savings that start mid-page (no Savings banner in text beforehand).
     if args.pdf:
-        band_lines = get_checking_band_lines(args.pdf)
-        if band_lines:
-            if args.debug:
-             print(f"[pdf-band] Replacing lines with Checking-band-only text "
-                   f"({len(band_lines)} lines vs {len(lines)} original-after-page-clip).")
-        lines = band_lines
-    else:
-        if args.debug:
-            print("[pdf-band] No band lines found (pdfplumber missing or anchors not matched); continuing with text-only clip.")
+        band_lines = get_checking_band_lines(args.pdf, debug=args.debug)
+
+    # Decide if the band result looks "healthy" (roughly enough date-led rows)
+    band_lines = get_checking_band_lines(args.pdf, debug=args.debug) if args.pdf else None
+    orig_dates = _count_date_lines(pageclip_lines) or _count_date_lines(lines)
+    band_dates = _count_date_lines(band_lines) if band_lines else 0
+    healthy = bool(band_lines) and (band_dates >= max(5, int(0.5 * (orig_dates or 0))))
 
     if args.debug:
-        try:
-            Path("debug_band_lines.txt").write_text("\n".join(lines), encoding="utf-8")
-            print("[pdf-band] wrote debug_band_lines.txt for inspection")
-        except Exception as e:
-            print("[pdf-band] could not write debug_band_lines.txt:", repr(e))
+        print(f"[pdf-band] date-lines: band={band_dates} vs orig={orig_dates} -> healthy={healthy}")
+
+    if healthy:
+        if args.debug:
+            print(f"[pdf-band] Replacing lines with Checking-band-only text "
+                f"({len(band_lines)} lines vs {len(lines)} original-after-page-clip).")
+        lines = _deglue_header_date(band_lines)
+    else:
+        if args.debug:
+            print("[pdf-band] Band result looks too small or empty; keeping page-clip lines.")
+        lines = _deglue_header_date(pageclip_lines)
+
+    # Optional: write what we will actually parse
+    if args.debug:
+        Path("debug_band_lines.txt").write_text("\n".join(lines), encoding="utf-8")
+        print("[pdf-band] wrote debug_band_lines.txt for inspection")
+
     # 3) Keep the text-only guard as a final safety net
     lines = clip_to_checking_lines(lines, debug=args.debug)
     if args.debug:
@@ -1393,10 +1426,22 @@ def main():
     end_year, end_month = parse_end_date_from_filename(input_path)
     begin_fallback, end_fallback = _balances_from_account_line(pageclip_lines)
     # If your normal balance parsing returns None for either, fill it from the fallback:
-    if begin_bal is None and begin_fallback is not None:
-        begin_bal = begin_fallback
-    if end_bal is None and end_fallback is not None:
-        end_bal = end_fallback
+    # Fallback from page-clip text
+    if begin_bal is None or end_bal is None:
+        b2, e2 = parse_begin_end_balances(pageclip_lines)
+    if begin_bal is None and b2 is not None:
+        begin_bal = b2
+    if end_bal is None and e2 is not None:
+        end_bal = e2
+
+# Fallback from PDF totals (most robust)
+    if (begin_bal is None or end_bal is None) and args.pdf:
+        totals = parse_pdf_totals(args.pdf)
+    if begin_bal is None and totals.get("begin") is not None:
+        begin_bal = totals["begin"]
+    if end_bal is None and totals.get("end") is not None:
+        end_bal = totals["end"]
+        
     if args.debug:
         # Spot-check: show a small window around Deposits header
         for i, raw in enumerate(lines, 1):
