@@ -20,6 +20,7 @@ We keep page order and rejoin with form-feed separators so downstream page index
 from __future__ import annotations
 import re
 from typing import List
+from pathlib import Path
 
 try:
     import pdfplumber  # type: ignore
@@ -29,15 +30,16 @@ except Exception:
 CHECKING_HDRS = [
     r"DEPOSITS\s+AND\s+ADDITIONS",
     r"CHECKS?\s+PAID",
+    r"CHECK\s*NO\.\s+DESCRIPTION",            # include table header
     r"ATM\s*&\s*DEBIT\s*CARD\s+WITHDRAWALS",
     r"ELECTRONIC\s+WITHDRAWALS"
 ]
+HDR_RE_LIST = [re.compile(h, re.I) for h in CHECKING_HDRS]
 SAVINGS_BANNERS = [
     r"SAVINGS\s+SUMMARY",
     r"CHASE\s+SAVINGS",
     r"^SAVINGS\b"
 ]
-HDR_RE_LIST = [re.compile(h, re.I) for h in CHECKING_HDRS]
 SAV_RE_LIST = [re.compile(s, re.I) for s in SAVINGS_BANNERS]
 
 def _find_y_of_phrase(page, regexes) -> list:
@@ -61,20 +63,40 @@ def _find_y_of_phrase(page, regexes) -> list:
                 hits.append(row["top"])
                 break
     return hits
-
 CHECKING_HDRS = [
     r"DEPOSITS\s+AND\s+ADDITIONS",
     r"CHECKS?\s+PAID",
-    r"ATM\s*&\s*DEBIT\s*CARD\s+WITHDRAWALS",     # matches "(continued)" too
-    r"ELECTRONIC\s+WITHDRAWALS"                  # matches "(continued)" too
+    r"CHECK\s*NO\.\s+DESCRIPTION",            # NEW: checks table header
+    r"ATM\s*&\s*DEBIT\s*CARD\s+WITHDRAWALS",  # matches "(continued)" too
+    r"ELECTRONIC\s+WITHDRAWALS"               # matches "(continued)" too
 ]
+HDR_RE_LIST = [re.compile(h, re.I) for h in CHECKING_HDRS]
+
 SAVINGS_BANNERS = [
     r"SAVINGS\s+SUMMARY",
     r"CHASE\s+SAVINGS",
     r"^SAVINGS\b"
 ]
-HDR_RE_LIST = [re.compile(h, re.I) for h in CHECKING_HDRS]
 SAV_RE_LIST = [re.compile(s, re.I) for s in SAVINGS_BANNERS]
+def _dump_words(page, tag, *, debug=False):
+    if not debug:
+        return
+    words = page.extract_words() or []
+    # TSV: top  x0  text
+    tsv = "\n".join(f"{float(w.get('top',0)):.1f}\t{float(w.get('x0',0)):.1f}\t{w.get('text','')}" for w in words)
+    Path(f"debug_words_{tag}.tsv").write_text(tsv, encoding="utf-8")
+def _text_from_words(page):
+    # Reconstruct lines by grouping words on the same y (top), then sorting by x
+    words = page.extract_words(x_tolerance=1, y_tolerance=2, use_text_flow=True, keep_blank_chars=False) or []
+    rows = {}
+    for w in words:
+        top = round(float(w.get("top", 0)), 1)
+        rows.setdefault(top, []).append((float(w.get("x0", 0)), w.get("text","")))
+    lines = []
+    for top in sorted(rows):
+        row = " ".join(txt for x, txt in sorted(rows[top], key=lambda t: t[0]))
+        lines.append(row)
+    return "\n".join(lines)
 
 def pdf_clip_checking_pages(pdf_path: str, raw_lines: List[str], debug: bool=False) -> List[str]:
     """
@@ -123,7 +145,8 @@ def pdf_clip_checking_pages(pdf_path: str, raw_lines: List[str], debug: bool=Fal
 
                 band = (0, y_start, page.width, y_end)
                 sub  = page.crop(band)
-                band_txt = sub.extract_text() or ""
+                _dump_words(sub, f"p{i+1}_band", debug=debug)
+                band_txt = _text_from_words(sub)
                 if debug:
                     print(f"[pdf-cuts] Page {i+1}: cropped {y_start:.1f}..{y_end:.1f}, kept_len={len(band_txt)}")
                 new_pages.append(band_txt)

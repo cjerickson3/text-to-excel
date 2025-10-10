@@ -1,10 +1,21 @@
-CONSOLIDATED BALANCE SUMMARY
-ASSETS
-ACCOUNT BEGINNING BALANCE ENDING BALANCE
-Checking & Savings
-THIS PERIOD THIS PERIOD
-Chase Better Banking Checking 000000714245263 $2,454.64 $1,025.19
-Chase Savings 000001197017229 15,382.90 9,564.95
+Deposits and Additions 8,555.59
+Checks Paid -4,191.53
+ATM & Debit Card Withdrawals -2,208.06
+Electronic Withdrawals -3,585.45
+Ending Balance $1,025.19
+*end*summary
+*start*post summary message1
+Your account ending in 7229 is linked to this account for overdraft protection.
+Good News. Your Monthly Service Fee was waived because you had at least a $1,500 balance in your Chase Better
+Banking Checking account at the end of the business day before the last day of your statement period or an average daily
+balance of $5,000 in qualifying linked deposits, investments, credit cards, mortgage and other loans during your statement
+period.
+*end*post summary message1
+Page of
+1 6
+
+*start*deposits and additions
+DEPOSITS AND ADDITIONS
 DATE DESCRIPTION AMOUNT
 10/15 Oasisbatch Payroll PPD ID: 5650786772 $1,678.19
 10/29 Online Transfer From Sav ...7229 Transaction#: 7611610282 5,000.00
@@ -54,18 +65,39 @@ DATE DESCRIPTION AMOUNT
 10/15 Card Purchase With Pin 10/15 Wal Wal-Mart Super 111 Plano TX Card 3978 20.12
 10/15 Card Purchase With Pin 10/15 Total Wine And More 50 Plano TX Card 3978 70.84
 10/15 Card Purchase With Pin 10/15 Kroger 0581 Plano TX Card 3978 15.74
-de1bit withdraw0al /16 Card Purchase With Pin 10/16 Dsw Creekwalk VI 801 W Plano TX Card 3978 54.11
-*end*atm
+10/16 Card Purchase With Pin 10/16 Dsw Creekwalk VI 801 W Plano TX Card 3978 54.11
+*end*atm debit withdrawal
 Page of
 2 6
+
+ATM & DEBIT CARD WITHDRAWALS
 DATE DESCRIPTION AMOUNT
 10/17 Card Purchase 10/16 Mcalister's Deli 536 Plano TX Card 3978 8.32
-36000000020309566311
+3
 10/17 Card Purchase With Pin 10/17 Gap US 1525 Dallas TX Card 3978 81.04
+6
+0
+0
+0
 10/17 Card Purchase With Pin 10/17 Cost Plus Wld #64 Plano TX Card 3978 14.99
+0
+0
+0
+0
 10/17 Card Purchase With Pin 10/17 Hirschs Specialty Meat Plano TX Card 3978 17.36
+2
+0
+3
 10/18 Card Purchase 10/17 Sq *Town & Country Clea Plano TX Card 3978 29.41
+0
+9
+5
+6
 10/18 Card Purchase With Pin 10/18 Market Street Plano TX Card 3978 14.91
+6
+3
+1
+1
 10/18 Card Purchase W/Cash 10/18 Kroger 0581 Plano TX Card 3978 54.97
 Purchase $14.97 Cash Back $40.00
 10/18 Card Purchase With Pin 10/18 Kroger Fuel Ctr 1581 Plano TX Card 3978 29.71
@@ -107,10 +139,12 @@ DATE DESCRIPTION AMOUNT
 10/09 Unitedhealthone Ins. Prem. PPD ID: 9005900018 $46.46
 10/15 10/14 Online Payment 7574854914 To Bank of America Visa 250.00
 10/15 10/14 Online Payment 7574854935 To Usaa Credit Card 1,000.00
-*end*electro1nic withdraw0al /15
-10/14 Online Payment 7574854925 To Digital Federal Credit Union 300.00
+10/15 10/14 Online Payment 7574854925 To Digital Federal Credit Union 300.00
+*end*electronic withdrawal
 Page of
 3 6
+
+ELECTRONIC WITHDRAWALS
 DATE DESCRIPTION AMOUNT
 10/19 10/19 Online Payment 7590446359 To Atmos Energy 33.31
 10/29 10/27 Online Payment 7611617894 To Allstate 500.00

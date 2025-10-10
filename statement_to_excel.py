@@ -45,7 +45,6 @@ from verifiers.pdf_page_cuts import pdf_clip_checking_pages
 
 CALLS = {"parse_dep_add": 0}  # put at module top, once
 # Regex patterns
-DATE_START_RE = re.compile(r"^\s*(\d{2}/\d{2})")
 # ONE capturing group so .findall() returns strings
 AMT_RE = re.compile(r"""
     (                                   # capture the whole amount
@@ -71,7 +70,7 @@ BOTTOM_RE = re.compile(
 DATE_LINE   = re.compile(r'^\s*(1[0-2]|0?[1-9])\s*[/-]\s*(3[01]|[12]\d|0?[1-9])(?:\s*[/-]\s*(\d{2,4}))?')
 DATE_TOKEN  = re.compile(r'^\s*(1[0-2]|0?[1-9])\s*[/-]\s*(3[01]|[12]\d|0?[1-9])(?:\s*[/-]\s*(\d{2,4}))?')
 DATE_SEARCH = re.compile(r'(1[0-2]|0?[1-9])\s*[/-]\s*(3[01]|[12]\d|0?[1-9])(?:\s*[/-]\s*(\d{2,4}))?')
-TOT_DEPOSITS_RE    = re.compile(r'Total\s+Deposits\s+and\s+Additions\s*\$?\s*([0-9,]+\.\d{2})', re.I)
+TOT_DEPOSITS_RE = re.compile(r'Total\s+Deposits\s+and\s+Additions\s*\$?\s*([0-9,]+\.\d{2})', re.I)
 TOT_WITHDRAWALS_RE = re.compile(r'Total\s+Withdrawals\s+and\s+Debits\s*\$?\s*([0-9,]+\.\d{2})', re.I)
 # Checks header (the real section header)
 CHECKS_HEADER = re.compile(r'^\s*CHECKS?\s+PAID\b', re.I)
@@ -96,6 +95,13 @@ CHECK_LINE_RE = re.compile(
         """,
     re.X
 )
+CHECK_LINE_ALT = re.compile(
+    r'^\s*(?P<chkno>\d{4})\s+Check\s*#\s*(?P=chkno)\b'
+    r'(?P<mid>.*?)(?=\d{1,2}[/-]\d{1,2}\s+\$?[0-9,]+\.\d{2}\s*$)'
+    r'(?P<mmdd>\d{1,2}[/-]\d{1,2})\s+\$?(?P<amt>[0-9,]+\.\d{2})\s*$',
+    re.IGNORECASE
+)
+
 # Begin new add
 # --- Deposits & Additions (sequential) ---
 DATE_START_RE = re.compile(r'^\s*(\d{1,2})\s*[/-]\s*(\d{1,2})')
@@ -107,7 +113,6 @@ HEADER_ROW = re.compile(r'^\s*DATE\s+DESCRIPTION\s+AMOUNT\b', re.I)
 
 # any obvious “we’re in checks now” signature
 # Lines that *start* a check row: 4+ digits at the very beginning
-CHECKS_NUMFIRST_HEAD = re.compile(r'^\s*\d{4,6}\b')
 CHECK_SNIFF = re.compile(
     r'\bCHECK\b|\b\d{4,6}\b\s*(?:[\^\*]\s*)?\d{1,2}\s*[/-]\s*\d{1,2}', re.I
 )
@@ -179,8 +184,6 @@ def _to_float_amt(txt: str) -> float:
         neg, s = True, s[1:-1]
     val = float(s)
     return -val if neg else val
-def _parse_money(s): return float(s.replace(',', ''))
-
 def parse_begin_end_balances(lines: list[str]) -> tuple[float|None, float|None]:
     """
     Returns (begin, end) balances for the CHECKING account on the statement.
@@ -231,11 +234,7 @@ def parse_begin_end_balances(lines: list[str]) -> tuple[float|None, float|None]:
 # --- Statement totals (for reconciliation by side) ---
 # safer, simpler extractor
 
-TOT_DEPOSITS_RE = re.compile(r'Total\s+Deposits\s+and\s+Additions\s*\$?\s*([0-9,]+\.\d{2})', re.I)
-TOT_WITHDRAWALS_RE = re.compile(
-    r'Total\s+(?:ATM\s*&\s*Debit\s*Card\s+)?Withdrawals(?:\s+and\s+Debits)?\s*\$?\s*([0-9,]+\.\d{2})',
-    re.I
-)
+
 def parse_statement_totals(lines: list[str]) -> tuple[float|None, float|None]:
     """Return (deposits_total, withdrawals_total) as floats or None if not found."""
     dep_total: float | None = None
@@ -247,30 +246,6 @@ def parse_statement_totals(lines: list[str]) -> tuple[float|None, float|None]:
         if m: wd_total   = float(m.group(1).replace(',', ''))
     return dep_total, wd_total
 
-def append_adjustments(df: pd.DataFrame,
-                       raw_lines: list[str],
-                       source_file: str,
-                       date_for_adj: pd.Timestamp,
-                       threshold: float = 0.02) -> pd.DataFrame:
-    dep_total, wd_total = parse_statement_totals(raw_lines)
-    dep_sum = float(df.loc[df["Amount"] > 0, "Amount"].sum())
-    wd_sum  = float((-df.loc[df["Amount"] < 0, "Amount"]).sum())
-    rows = []
-    if dep_total is not None:
-        delta = round(dep_total - dep_sum, 2)
-        if abs(delta) >= threshold:
-            rows.append({"Date": date_for_adj,
-                         "Description": f"Adjustment: deposits total per statement ({source_file})",
-                         "Category": "Adjustment", "Amount": delta, "_src": "ADJUST"})
-    if wd_total is not None:
-        delta = round(wd_total - wd_sum, 2)
-        if abs(delta) >= threshold:
-            rows.append({"Date": date_for_adj,
-                         "Description": f"Adjustment: withdrawals total per statement ({source_file})",
-                         "Category": "Adjustment", "Amount": -delta, "_src": "ADJUST"})
-    if rows:
-        df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
-    return df
 # Create Adjustment Record
 def _append_adj(df_in, amt, label):
     adj_date = pd.to_datetime(df_in["Date"].max())
@@ -315,7 +290,11 @@ def is_check_txn(line: str) -> bool:
         return True
     if CHECK_NUMBER_INLINE.search(line):
         return True
+    if CHECK_LINE_RE.match(line):
+        return True
     if CHECK_LINE_RE1.match(line):
+        return True
+    if CHECK_LINE_ALT.match(line):
         return True
     return False
 
@@ -394,45 +373,6 @@ def _deglue_header_date(seq: list[str]) -> list[str]:
 def _count_date_lines(seq: list[str]) -> int:
     return sum(1 for ln in seq if re.match(r'^\d{1,2}/\d{2}\b', ln))
 
-#---
-def find_deposits_window(lines: list[str], *, debug: bool=False) -> tuple[int|None, int|None, list[str]]:
-    """
-    Find the *detail* Deposits & Additions window, not the summary.
-    Strategy: collect all header candidates (1-line and 2-line), build [start,end)
-    windows to the next clear section, score each by # of date-looking lines, and
-    return the highest-scoring one.
-    """
-    N = len(lines)
-    cands = []
-
-    # 1) single-line headers
-    for i in range(N):
-        if DEP_ADD_HDR.search(_norm(lines[i])):
-            j = i + 1
-            while j < N and not NEXT_SEC.search(_norm(lines[j])):
-                j += 1
-            cands.append((i, j, [_norm(x) for x in lines[i+1:j]]))
-
-    # 2) two-line headers: "Deposits" line, then "Additions/Credits" line
-    for i in range(N - 1):
-        a = _norm(lines[i]); b = _norm(lines[i+1])
-        if re.search(r"\bDeposits?\b", a, re.I) and re.search(r"\b(Additions?|Credits?)\b", b, re.I):
-            j = i + 2
-            while j < N and not NEXT_SEC.search(_norm(lines[j])):
-                j += 1
-            cands.append((i, j, [_norm(x) for x in lines[i+2:j]]))
-
-    if not cands:
-        return None, None, []
-
-    # pick the window with the most date-looking lines
-    best = max(cands, key=lambda t: _count_date_lines(t[2]))
-    if debug:
-        scored = [(s+1, e, _count_date_lines(win)) for (s, e, win) in cands]
-        print("[DEBUG] Deposit candidates (start→end, date-lines):",
-              ", ".join(f"{s}->{e} ({k})" for s, e, k in scored))
-        print(f"[DEBUG] Chosen deposits window: {best[0]+1} → {best[1]} ({_count_date_lines(best[2])} date-lines)")
-    return best[0], best[1], best[2]
 # New code
 def file_signature(path: Path) -> tuple[str, int, str]:
     b = path.read_bytes()
@@ -460,180 +400,13 @@ def append_ingest_log(ws, dashboard_path: Path, sig, parsed: int, added: int):
         dashboard_path.name
     ])
 
-# End New code
-# Dates at start (tolerant of spaces and '-' slash)
-
-def iter_deposits_additions(lines, *, debug=False):
-    """
-    Yield each transaction line in 'Deposits & Additions' section.
-    - Enter on header (even if header is split across two lines).
-    - Skip blanks/subtotals/headers.
-    - Stop only on the next clear section header.
-    """
-    in_sec = False
-    header_armed = False   # saw "Deposits", waiting for "Additions" next line
-
-    for idx, raw in enumerate(lines, start=1):
-        line = (raw or "").strip()
-
-        if not in_sec:
-            # Handle 2-line headers like "DEPOSITS AND" (line break) "ADDITIONS"
-            if not header_armed and re.search(r"Deposits?", line, re.I):
-                header_armed = True
-                continue
-            if header_armed and re.search(r"(Additions?|Credits?)", line, re.I):
-                in_sec = True
-                header_armed = False
-                if debug:
-                    print(f"[DEBUG] Entered 'Deposits & Additions' at line {idx}: {line!r}")
-                continue
-
-            # 1-line header
-            if DEP_ADD_HDR.search(line):
-                in_sec = True
-                if debug:
-                    print(f"[DEBUG] Entered 'Deposits & Additions' at line {idx}: {line!r}")
-                continue
-
-            continue
-
-        # --- inside the section ---
-        if NEXT_SEC.search(line):  # clear next section → exit
-            if debug:
-                print(f"[DEBUG] Leaving 'Deposits & Additions' at line {idx}: {line!r}")
-            break
-
-        # skip noise
-        if not line or SUBTOTAL_RE.search(line) or HEADER_RE.search(line):
-            continue
-
-        # transaction lines start with date
-        if DATE_TOKEN.match(line):
-            yield line
-        else:
-            # ignore non-date lines inside section (don’t break)
-            continue
-
-# New parse_dep_add
-def parse_dep_add(lines, end_year: int, end_month: int, *, debug: bool=False):
-    # --- build candidate runs ---
-    runs = []  # <== the list of (header_index, [date-led lines])
-
-    # 1) Header-anchored candidates
-    for i, raw in enumerate(lines):
-        if DEP_ADD_HDR.search(_norm(raw)):
-            r = grab_date_run(lines, i, debug=debug)
-            if r:
-                runs.append((i, r))
-
-    # 2) Fallback: if no header-based runs, scan for any date-run blocks
-    if not runs:
-        j, N = 0, len(lines)
-        while j < N:
-            if DATE_LINE.match(_norm(lines[j])):
-                r = grab_date_run(lines, j-1, debug=debug)  # pretend header right before first date
-                if r:
-                    runs.append((j-1, r))
-                k = j + 1
-                while k < N and DATE_LINE.match(_norm(lines[k])):
-                    k += 1
-                j = k
-            else:
-                j += 1
-
-    if not runs:
-        if debug: print("[DEBUG] Deposits: no date-run found")
-        return []
-    checks_rows = parse_checks_anywhere(lines, end_year, end_month)
-    atm_rows    = parse_negative_section(lines, ATM_DEBIT_HDR, end_year, end_month, debug=debug)
-    elec_rows   = parse_negative_section(lines, ELEC_WITH_HDR,  end_year, end_month, debug=debug)
-
-    # --- de-dup and filter weird candidates ---
-    def _first_date_offset(_lines, start_idx, r):
-        if not r: return 10**9
-        first = r[0]
-        for k in range(start_idx+1, min(start_idx+60, len(_lines))):
-            if _norm(_lines[k]) == first:
-                return k - start_idx
-        return 10**9
-
-    # de-dup by (header index, first-date offset, length)
-    seen, uniq = set(), []
-    for i, r in runs:
-        pos = _first_date_offset(lines, i, r)
-        key = (i, pos, len(r))
-        if key in seen: 
-            continue
-        seen.add(key)
-        uniq.append((i, r, pos))
-
-    # prefer runs where the first date appears reasonably soon after header
-    filtered = [(i, r, pos) for (i, r, pos) in uniq if pos <= 20]
-    if not filtered:
-        filtered = uniq  # fall back rather than fail
-
-    # pick best: longest run, then smaller first-date offset
-    i_best, run_lines, pos = max(filtered, key=lambda t: (_score_depositish(t[1]), len(t[1]), -t[2]))
-
-    if debug:
-        print(f"[DEBUG] Deposits chosen run starting near line {i_best+1} with {len(run_lines)} rows (first-date offset {pos})")
-
-    # --- parse the chosen run into rows ---
-    rows = []
-    for line in run_lines:
-        m = DATE_LINE.match(line)
-        if not m:
-            continue
-        mm = int(m.group(1)); dd = int(m.group(2))
-        year = assign_year(end_year, end_month, mm)
-
-        tail = line[m.end():].strip()
-        amts = AMT_RE.findall(tail)
-        if not amts:
-            if debug: print(f"   [WARN] no amount on: {line!r}")
-            continue
-        amt_txt = amts[-1]
-        desc = tail[: tail.rfind(amt_txt)].strip()
-        amt = clean_amount(amt_txt)
-
-        rows.append((f"{year:04d}/{mm:02d}/{dd:02d}", desc, abs(amt), "DEP_ADD"))
-    return rows
-
 def _match_check(line: str):
-    m = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
+    m = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line) or CHECK_LINE_ALT.match(line)
     if not m:
         return None
     # normalize to (chkno, mmdd, amt_text)
     grp = m.groupdict()
     return grp["chkno"], grp["mmdd"], grp["amt"]
-
-
-def decide_sign(description: str, amt: float):
-    """
-    Returns (signed_amount, source, match_keyword)
-    source ∈ {'pos_hint','neg_hint','income_keywords','fallback_negative'}
-    """
-    u = (description or "").upper()
-# Optional, but nice: directional transfers first
-    if re.search(r'\b(TRANSFER|XFER|TRF)\s+FROM\b', u) or ('FROM' in u and 'PERSHING' in u):
-        return abs(amt), "transfer_from", "FROM"
-    if re.search(r'\b(TRANSFER|XFER|TRF)\s+TO\b', u) or ('TO' in u and 'PERSHING' in u):
-        return -abs(amt), "transfer_to", "TO"
-    
-    for kw in POS_SIGN_HINTS:
-        if kw.upper() in u:
-            return abs(amt), "pos_hint", kw
-    for kw in NEG_SIGN_HINTS:
-        if kw.upper() in u:
-            return -abs(amt), "neg_hint", kw
-
-    # Fallback to your existing income keyword logic
-    for kw in DEFAULT_INCOME_KEYS:
-        if kw.upper() in u:
-            return abs(amt), "income_keywords", kw
-
-    # Final fallback: treat as expense (negative)
-    return -abs(amt), "fallback_negative", None
 
 def clean_amount(a: str) -> float:
     s = a.strip()
@@ -650,13 +423,6 @@ def clean_amount(a: str) -> float:
         s = s.lstrip('-').strip()
     val = float(s)
     return -val if neg else val
-def concat_nonempty(dfs, columns=None):
-    frames = [d for d in dfs if d is not None and not getattr(d, "empty", True)]
-    if not frames:
-        return pd.DataFrame(columns=columns)
-    return pd.concat(frames, ignore_index=True)
-
-
 def parse_end_date_from_filename(path: Path):
     """Extract end_year and end_month from filename like 20190107-...pdf/raw."""
     m = re.search(r"(20\d{2})(\d{2})(\d{2})", path.stem)
@@ -745,111 +511,49 @@ def apply_rules(description: str, rules):
             continue
     return None
 
-def infer_sign(description: str, amt: float, income_keys=None) -> float:
-    if income_keys is None:
-        income_keys = DEFAULT_INCOME_KEYS
-    d = (description or "").upper()
-    return abs(amt) if any(k in d for k in income_keys) else -abs(amt)
+def parse_by_startend_markers(lines: list[str], *, debug=False) -> list[str]:
+    """
+    Use '*start*...'' and '*end*...' pdftotext markers to isolate Checking-band text,
+    replacing the pdfplumber band logic. Returns the subset of lines covering the
+    sections that belong to the CHECKING account only.
+    """
+    marker_re = re.compile(r"^\*+(start|end)\*+(.+)$", re.I)
+    sections, current = [], None
 
-def extract_section_lines(all_lines):
-    capturing = False
-    out = []
-    for raw in all_lines:
-        line = (raw or "").strip()
-
-        # Start at the checks total/header
-        if not capturing and re.search(r"Total\s+Checks\s+Paid\b", line, re.I):
-            capturing = True
-            continue
-
-        if not capturing:
-            continue
-
-        # Stop when we hit a major section header or a non-check line
-        if MAJOR_STOP.match(line) or NEXT_SEC.match(line) or (line and not is_check_txn(line)):
-            capturing = False
-            continue
-
-        if is_check_txn(line):
-            out.append(line)
-    return out
-
-# Parse_records
-def parse_records_from_lines(lines, end_year: int, end_month: int):
-    records = []
-    for line in lines:
-        if not line or SUBTOTAL_RE.search(line) or HEADER_RE.search(line):
-            continue
-
-        # Only accept true check lines here
-        if is_check_txn(line):
-            m_chk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
-            if not m_chk:
-                continue
-            chkno = m_chk.group("chkno")
-            mmdd  = m_chk.group("mmdd")
-            amt   = clean_amount(m_chk.group("amt"))
-            mm, dd = map(int, mmdd.split("/"))
-            year   = assign_year(end_year, end_month, mm)
-            desc   = f"CHECK #{chkno}"
-            records.append((f"{year:04d}/{mm:02d}/{dd:02d}", desc, amt))
-            continue
-
-        # Not a check → skip (prevents re-parsing deposit/ACH rows)
-        continue
-
-    df = pd.DataFrame(records, columns=["Date","Description","Amount"])
-    if df.empty: return df
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    return df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-
-def parse_checks_anywhere(all_lines, end_year: int, end_month: int):
-    """Scan all lines; extract only true check rows. No section window needed."""
-    out = []
-    seen = set()  # (chkno, date, amt)
-    for raw in all_lines:
-        m = _match_check(_norm(raw))
+    for i, raw in enumerate(lines):
+        m = marker_re.match(raw.strip())
         if not m:
             continue
-        chkno, mmdd, amt_txt = m
-        mm, dd = [int(x) for x in re.split(r'[/-]', mmdd)]
-        year = assign_year(end_year, end_month, mm)
-        amt = clean_amount(amt_txt)
-        key = (chkno, f"{year:04d}/{mm:02d}/{dd:02d}", round(abs(amt), 2))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append((f"{year:04d}/{mm:02d}/{dd:02d}", f"CHECK #{chkno}", -abs(amt)))
-    return out
-def parse_negative_section(all_lines, header_re, end_year: int, end_month: int, *, debug=False):
-    """Collect date-led rows after header until the next clear section, as negatives."""
-    rows = []
-    N = len(all_lines)
-    for i, raw in enumerate(all_lines):
-        if not header_re.search(_norm(raw)): 
-            continue
-        # walk forward
-        j = i + 1
-        while j < N:
-            line = _norm(all_lines[j])
-            if MAJOR_STOP.match(line) or NEXT_SEC.search(line) or HEADER_ROW.match(line) or SUBTOTAL_RE.match(line):
-                # stop when we truly enter the next section or hit totals/headers
-                if debug: print(f"[TRACE] stop {header_re.pattern!r} at j={j+1}: {line!r}")
-                break
-            m = DATE_LINE.match(line)
-            if m:
-                mm, dd = int(m.group(1)), int(m.group(2))
-                year = assign_year(end_year, end_month, mm)
-                tail = line[m.end():].strip()
-                amts = AMT_RE.findall(tail)
-                if amts:
-                    amt_txt = amts[-1]
-                    desc = tail[: tail.rfind(amt_txt)].strip()
-                    amt = clean_amount(amt_txt)
-                    rows.append((f"{year:04d}/{mm:02d}/{dd:02d}", desc, -abs(amt)))
-            j += 1
-        # don’t break; some statements repeat the header; we’ll just gather again and dedupe on concat
-    return rows
+        tag, name = m.groups()
+        name = name.strip().lower()
+        # Normalize: remove trailing 'section3', 'section2', etc.
+        name = re.sub(r"\s*section\d+\b", "", name)
+        if tag.lower() == "start":
+            current = {"name": name, "start": i}
+        elif tag.lower() == "end" and current and current["name"] == name:
+            current["end"] = i
+            sections.append(current)
+            current = None
+
+    if debug:
+        print(f"[markers] found {len(sections)} section spans:")
+        for s in sections:
+            print(f"    {s['name']} ({s['start']}–{s.get('end')})")
+
+    # For Chase, keep only the sections between "deposits" and "electronic withdrawals"
+    keep_names = {"deposits and additions", "checks paid", "atm debit withdrawal", "electronic withdrawal"}
+    keep_spans = [s for s in sections if any(k in s["name"] for k in keep_names)]
+
+    # Flatten into a list of line ranges
+    kept_lines = []
+    for s in keep_spans:
+        start, end = s["start"], s.get("end", len(lines))
+        kept_lines.extend(lines[start:end])
+
+    if debug:
+        print(f"[markers] kept {len(kept_lines)} of {len(lines)} total lines")
+    return kept_lines
+
 # --- Single-pass stream parser (deposits → checks → atm → electronic) ---
 MAJOR_BREAK = re.compile(r'^\s*(TRANSACTION\s+DETAIL|DATE\s+DESCRIPTION\s+AMOUNT\s+BALANCE)\b', re.I)
 
@@ -878,14 +582,18 @@ def parse_stream_simple(lines, end_year: int, end_month: int, *, debug: bool=Fal
         if not line:
             i += 1
             continue
+        m = CHECK_LINE_ALT.match(line)
         # ---- Check-number-first rows (e.g., "2423 ^ 08/27 $859.00") ----
-        
-        mchk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line)
+        mchk = CHECK_LINE_RE1.match(line) or CHECK_LINE_RE.match(line) or CHECK_LINE_ALT.match(line)
         if mchk:
             mm, dd = map(int, re.split(r'[/-]', mchk.group('mmdd')))
             year   = assign_year(end_year, end_month, mm)
             amt    = clean_amount(mchk.group('amt'))
-            desc   = f"CHECK #{mchk.group('chkno')}"
+            if CHECK_LINE_ALT.match(line):
+                desc_mid = m.group('mid').strip()
+                desc = f"Check # {m.group('chkno')} {desc_mid} {m.group('mmdd')}".replace("  ", " ").strip()   
+            else:
+                desc   = f"CHECK #{mchk.group('chkno')}"
             out.append((f"{year:04d}/{mm:02d}/{dd:02d}", desc, -abs(amt), "CHECKS"))
             i += 1
             continue
@@ -1206,89 +914,6 @@ def clip_to_checking_lines(lines, *, debug: bool=False):
         print(f"[clip2] Keeping {len(clipped)} of {len(lines)} lines (Checking-only slice).")
     return clipped
 
-
-
-# -------- Safety-net rescanner for Electronic lines we commonly miss --------
-AMT_ONLY_RE_SAFE = re.compile(r'^\s*(-?\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}\s*-?|\(\s*\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}\s*\))\s*$')
-DATE_HEAD_RE_SAFE = re.compile(r'^\s*(1[0-2]|0?[1-9])\s*[/-]\s*(3[01]|[12]\d|0?[1-9])\b')
-
-def _assign_year_from_end(end_year:int, end_month:int, mm:int)->int:
-    if mm == end_month: return end_year
-    if end_month == 1 and mm == 12: return end_year - 1
-    if mm == ((end_month - 1) if end_month > 1 else 12): return end_year
-    return end_year
-
-def _parse_end_from_name(pathlike)->tuple[int,int]:
-    import re
-    stem = Path(str(pathlike)).stem
-    m = re.search(r'(20\d{2})(\d{2})(\d{2})', stem)
-    if not m: return (None, None)
-    y, mth, _ = m.groups()
-    return (int(y), int(mth))
-
-def plug_holes_for_electronic(lines, df, input_path, *, debug=False):
-    """
-    Second-pass scan to capture known-missed Electronic lines like:
-      - 'Online Transfer To Sav ... Transaction#: 123456  12,000.00'
-      - 'Venmo Payment 20048... Web ID: ...  93.00'
-    Only adds a row if not already present (by Date+Description+Amount).
-    """
-    try:
-        end_year, end_month = _parse_end_from_name(input_path)
-        added = 0
-        N = len(lines)
-        for i in range(N):
-            raw = lines[i]
-            line = (raw or "").strip()
-            if not DATE_HEAD_RE_SAFE.match(line):
-                continue
-            low = line.lower()
-            if not (('transfer' in low and 'to sav' in low) or ('venmo payment' in low)):
-                continue
-            # date
-            md = DATE_HEAD_RE_SAFE.match(line)
-            mm, dd = map(int, re.split(r'[/-]', md.group(0).strip())[:2])
-            # amount
-            am = list(AMT_RE.findall(line))
-            amt_txt = am[-1] if am else None
-            j_used = i
-            if not amt_txt:
-                for look in (1,2):
-                    if i+look < N and AMT_ONLY_RE_SAFE.match((lines[i+look] or '').strip()):
-                        amt_txt = AMT_ONLY_RE_SAFE.match((lines[i+look] or '').strip()).group(1)
-                        j_used = i+look
-                        break
-            if not amt_txt:
-                if debug: print(f"[plug-holes] No amount for candidate at {i+1}: {line}")
-                continue
-            amt = clean_amount(amt_txt)
-            year = _assign_year_from_end(end_year, end_month, mm) if (end_year and end_month) else None
-            if year is None:
-                if debug: print("[plug-holes] No end-year/month from filename; skip")
-                continue
-            desc = line[len(md.group(0)):].strip()
-            signed = -abs(amt)
-            # Dupe check
-            dts = f"{year:04d}/{mm:02d}/{dd:02d}"
-            try:
-                key_date = pd.to_datetime(dts)
-                if not df.empty:
-                    mask = (df["Date"] == key_date) & (df["Description"] == desc) & (df["Amount"] == signed)
-                    if bool(mask.any()):
-                        continue
-                new_row = pd.DataFrame([{"Date": key_date, "Description": desc, "Category": "", "Amount": signed, "_src": "ELEC"}])
-                df = pd.concat([df, new_row], ignore_index=True)
-                added += 1
-                if debug: print(f"[plug-holes] Added missed ELEC line at {i+1}: {desc} {signed:+.2f}")
-            except Exception as _e:
-                if debug: print(f"[plug-holes] error: {_e}")
-                continue
-        if added and debug:
-            print(f"[plug-holes] Added {added} Electronic rows (Transfer/Venmo).")
-        return df
-    except Exception as e:
-        if debug: print(f"[plug-holes] skipped due to error: {e}")
-        return df
 def write_about_sheet(wb, dashboard_path):
     name = "About"
     if name in wb.sheetnames:
@@ -1388,11 +1013,12 @@ def main():
     pageclip_lines = lines[:]  # keep a fallback snapshot
     # 2) NEW: Intra-page clip using pdfplumber (Checking band only)
 #    This removes Savings that start mid-page (no Savings banner in text beforehand).
-    if args.pdf:
-        band_lines = get_checking_band_lines(args.pdf, debug=args.debug)
+#    if args.pdf:
+#        band_lines = get_checking_band_lines(args.pdf, debug=args.debug)
+#   band_lines = get_checking_band_lines(args.pdf, debug=args.debug) if args.pdf else None    
 
     # Decide if the band result looks "healthy" (roughly enough date-led rows)
-    band_lines = get_checking_band_lines(args.pdf, debug=args.debug) if args.pdf else None
+    band_lines = parse_by_startend_markers(lines, debug=args.debug)
     orig_dates = _count_date_lines(pageclip_lines) or _count_date_lines(lines)
     band_dates = _count_date_lines(band_lines) if band_lines else 0
     healthy = bool(band_lines) and (band_dates >= max(5, int(0.5 * (orig_dates or 0))))
@@ -1441,7 +1067,7 @@ def main():
         begin_bal = totals["begin"]
     if end_bal is None and totals.get("end") is not None:
         end_bal = totals["end"]
-        
+
     if args.debug:
         # Spot-check: show a small window around Deposits header
         for i, raw in enumerate(lines, 1):

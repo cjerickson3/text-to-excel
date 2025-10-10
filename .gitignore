@@ -49,3 +49,4 @@ data/raw/
 
 # local backups of verifiers
 debug_band_lines*.txt
+debug_words_p?_band.tsv

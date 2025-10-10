@@ -32,6 +32,15 @@ BOTTOM_PATTS = [
     re.compile(r'\bSAVINGS\b.*\bSUMMARY\b', re.I),               # SAVINGS SUMMARY
     re.compile(r'\bCHASE\b.*\bSAVINGS\b', re.I),                 # CHASE SAVINGS
 ]
+# Accept multiple ways to recognize CHECKS
+_SEC_PATTERNS = {
+    "DEPOSITS": re.compile(r'^\s*DEPOSITS?\b.*\b(ADDITIONS?|CREDITS?)\b', re.I),
+    "CHECKS":   re.compile(r'^\s*(CHECKS?\s+PAID|CHECK\s+NO\.\s+DESCRIPTION)\b', re.I),
+    "ATM":      re.compile(r'^\s*ATM\s*&?\s*DEBIT\s*CARD\s*WITHDRAWALS?\b', re.I),
+    "ELECTRONIC": re.compile(r'^\s*ELECTRONIC\s+WITHDRAWALS?\b', re.I),
+}
+_CHECK_ROW = re.compile(r'^\s*\d{4,6}\s+(?:[\^\*]\s+)?\d{1,2}[/-]\d{1,2}\b')  # a check row
+
 AMOUNT_RE = re.compile(r"\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}")
 
 BEGIN_BAL_RE = re.compile(
@@ -240,23 +249,63 @@ def _page_texts_checking_band(pdf, *, debug: bool = False) -> list[str]:
     if debug:
         print(f"[pdf-band] built texts for {len(page_texts)} pages")
     return page_texts
+# --- Section span finder used to keep only transaction blocks (optional) ---
+_SEC_PATTERNS = {
+    "DEPOSITS": re.compile(r'^\s*DEPOSITS?\b.*\b(ADDITIONS?|CREDITS?)\b', re.I),
+    "CHECKS":   re.compile(r'^\s*(CHECKS?\s+PAID|CHECK\s+NO\.\s+DESCRIPTION)\b', re.I),
+    "ATM":      re.compile(r'^\s*ATM\s*&?\s*DEBIT\s*CARD\s*WITHDRAWALS?\b', re.I),
+    "ELECTRONIC": re.compile(r'^\s*ELECTRONIC\s+WITHDRAWALS?\b', re.I),
+}
+# also accept a row that *is itself* a check line
+_CHECK_ROW = re.compile(r'^\s*\d{4,6}\s+(?:[\^\*]\s+)?\d{1,2}[/-]\d{1,2}\b')
+
+def _find_section_spans(lines: list[str]):
+    labels = []
+    for i, ln in enumerate(lines):
+        s = (ln or "").strip()
+        # Label by headers first
+        for name, rx in _SEC_PATTERNS.items():
+            if rx.search(s):
+                labels.append((i, name))
+                break
+        # If no labels yet and we see a check row, inject a CHECKS label
+        if not labels and _CHECK_ROW.match(s):
+            labels.append((i, "CHECKS"))
+
+    if not labels:
+        return []
+
+    spans = []
+    for (i, name), (j, _) in zip(labels, labels[1:] + [(len(lines), None)]):
+        spans.append((i, j, name))
+    return spans
 
  
 # ---------- Public API ----------
-def get_checking_band_lines(pdf_path: str, *, debug: bool = False) -> list[str]:
-    import pdfplumber
+def get_checking_band_lines(pdf_path: str):
     with pdfplumber.open(pdf_path) as pdf:
-        page_texts = _page_texts_checking_band(pdf, debug=debug)
-    # Flatten per-page strings into individual lines
-    lines: list[str] = []
-    for txt in page_texts:
-        if not txt:
-            continue
-        lines.extend(txt.splitlines())
-    if debug:
-        print(f"[pdf-band] built {len(lines)} lines from checking bands across {len(page_texts)} pages")
-    return lines
+        page_texts = _page_texts_checking_band(pdf)
+        merged = "\n".join([t for t in page_texts if t])
+        lines  = (merged or "").splitlines()
+        normed = [l.replace("\u00A0"," ").replace("\u2007"," ").replace("\u202F"," ") for l in lines]
 
+        # NEW: optional intra-band section pruning (fail-open)
+        spans = _find_section_spans(normed)
+        return normed
+    #  Commented out to figure out where checks are
+    # if spans and any(lbl == "CHECKS" for _, _, lbl in spans):
+    #   kept, kept_cnt = [], 0
+    #    for a, b, label in spans:
+    #        kept.extend(normed[a:b]); kept_cnt += (b - a)
+    #        print(f"[markers] found {len(spans)} section spans:")
+    #    for a, b, label in spans:
+    #        print(f"    {label.lower()} ({a}–{b})")
+    #        print(f"[markers] kept {kept_cnt} of {len(normed)} total lines")
+    #    return kept
+    #else:
+    #    print("[markers] no CHECKS span; returning full band without pruning")
+    #    return normed
+    
 def parse_pdf_totals(pdf_path: str) -> Dict[str, Optional[float]]:
     """
     Extracts (begin_balance, end_balance, total_deposits, total_withdrawals)
