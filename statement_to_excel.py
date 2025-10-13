@@ -43,7 +43,6 @@ from datetime import datetime
 from verifiers.pdf_plumber_verify import verify_statement_pdf, parse_pdf_totals, get_checking_band_lines
 from verifiers.pdf_page_cuts import pdf_clip_checking_pages
 
-CALLS = {"parse_dep_add": 0}  # put at module top, once
 # Regex patterns
 # ONE capturing group so .findall() returns strings
 AMT_RE = re.compile(r"""
@@ -948,6 +947,16 @@ def _balances_from_account_line(raw_lines):
             def _f(x): return float(x.replace(",",""))
             return _f(m.group(1)), _f(m.group(2))
     return (None, None)
+# --- helpers ---------------------------------------------------------------
+def _src(final_value, *tagged_candidates):
+    """
+    Return the name of the first candidate whose value equals final_value.
+    Usage: _src(begin_bal, ("pageclip", b2), ("acctline", begin_fallback), ("pdf", totals.get("begin")))
+    """
+    for tag, candidate in tagged_candidates:
+        if candidate is not None and final_value == candidate:
+            return tag
+    return "pre-existing"
 
 def main():
     ap = argparse.ArgumentParser()
@@ -1050,23 +1059,54 @@ def main():
     # Parse balances & statement end date
     begin_bal, end_bal = parse_begin_end_balances(lines)
     end_year, end_month = parse_end_date_from_filename(input_path)
-    begin_fallback, end_fallback = _balances_from_account_line(pageclip_lines)
-    # If your normal balance parsing returns None for either, fill it from the fallback:
-    # Fallback from page-clip text
+# --- define candidates up-front so they always exist in this scope ---
+    b2: float | None = None
+    e2: float | None = None
+    begin_fallback: float | None = None
+    end_fallback: float | None = None
+    totals: dict = {}
+
+    # --- compute candidates (some may stay None) ---
     if begin_bal is None or end_bal is None:
         b2, e2 = parse_begin_end_balances(pageclip_lines)
-    if begin_bal is None and b2 is not None:
-        begin_bal = b2
-    if end_bal is None and e2 is not None:
-        end_bal = e2
 
-# Fallback from PDF totals (most robust)
-    if (begin_bal is None or end_bal is None) and args.pdf:
-        totals = parse_pdf_totals(args.pdf)
-    if begin_bal is None and totals.get("begin") is not None:
-        begin_bal = totals["begin"]
-    if end_bal is None and totals.get("end") is not None:
-        end_bal = totals["end"]
+    begin_fallback, end_fallback = _balances_from_account_line(pageclip_lines)
+
+    if (begin_bal is None or end_bal is None) and getattr(args, "pdf", None):
+        totals = parse_pdf_totals(args.pdf) or {}
+
+    # --- coalesce ---
+    if begin_bal is None:
+        if b2 is not None:
+            begin_bal = b2
+        elif begin_fallback is not None:
+            begin_bal = begin_fallback
+        elif totals.get("begin") is not None:
+            begin_bal = totals["begin"]
+
+    if end_bal is None:
+        if e2 is not None:
+            end_bal = e2              # <- not "=- e2"
+        elif end_fallback is not None:
+            end_bal = end_fallback
+        elif totals.get("end") is not None:
+            end_bal = totals["end"]
+
+    # --- debug (now safely reachable and all names are defined) ---
+    begin_src = _src(
+        begin_bal,
+        ("pageclip", b2),
+        ("acctline", begin_fallback),
+        ("pdf", totals.get("begin")),
+    )
+    end_src = _src(
+        end_bal,
+        ("pageclip", e2),
+        ("acctline", end_fallback),
+        ("pdf", totals.get("end")),
+    )
+    if getattr(args, "debug", False):
+        print(f"[balances] begin={begin_bal} (from {begin_src}); end={end_bal} (from {end_src})")
 
     if args.debug:
         # Spot-check: show a small window around Deposits header

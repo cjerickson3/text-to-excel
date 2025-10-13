@@ -1,126 +1,137 @@
-# text_to_excel
+# statement_to_excel
 
-Parses bank/statement text files and produces an Excel dashboard with:
-- Transaction detail
-- Monthly & yearly summaries
-- Balance reconciliation (v0.10 “fix sign” working baseline)
+[![Version](https://img.shields.io/github/v/tag/cjerickson3/statement_to_excel?label=version&color=3E7EBB)](https://github.com/cjerickson3/statement_to_excel/tags)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-This repo originated from a working script previously named `ingest_statement_text_balrecon_fixsign_v10.py`.  
-The canonical entrypoint is now **`text_to_excel.py`**.
+A Python utility that parses **Chase Bank statement text exports** into a structured **Excel dashboard** for personal budgeting and long-term financial analysis.
+
+This project evolved from **text-to-excel** and introduces a refined parsing engine, PDF band verification, and fully automated workbook integration — ideal for long-term, reproducible budget tracking.
 
 ---
 
-## Quick start
+## 🧭 Overview
 
-### 1) Create and activate a virtual environment (Windows)
+`statement_to_excel.py` ingests bank statement text files (converted from PDF) and populates **Chase_Budget_Dashboard.xlsx** with categorized transactions, monthly summaries, and optional verification sheets.
 
-**PowerShell**
-```powershell
+It automatically detects *Deposits*, *Checks*, *ATM*, and *Electronic Withdrawals*, applies geometry-aware clipping to exclude *Savings* transactions, and maintains consistent versioning using Git tags.
+
+---
+
+## ⚙️ Key Features
+
+- 🧾 Converts Chase statement text to Excel dashboards  
+- ✂️ Automatically excludes Savings transactions  
+- 🧩 Handles multi-page statements and inter-account transfers  
+- 🔍 Optional PDF band verification (`--verify-pdf`)  
+- 🧠 Detects start/end of sections without page headers  
+- 🪶 Lightweight, dependency-minimal core (pandas, openpyxl, pdfplumber)  
+- 🧰 Includes Git-based version stamping in Excel exports  
+- 🧪 Generates debug `.tsv` traces for QA (ignored by Git)
+
+---
+
+## 🚀 Getting Started
+
+### 1️⃣ Clone the repository
+```bash
+git clone https://github.com/cjerickson3/statement_to_excel.git
+cd statement_to_excel
+### Set up a Python virtual environment
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-**Git Bash**
-```bash
+# Activate it
+#   On Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+#   On macOS/Linux:
+source .venv/bin/activate
+2️⃣ Set up a Python virtual environment
 python -m venv .venv
-source .venv/Scripts/activate
-python -m pip install --upgrade pip
+# Activate it
+#   On Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+#   On macOS/Linux:
+source .venv/bin/activate
+
+3️⃣ Install dependencies
 pip install -r requirements.txt
-```
 
-### 2) Run
-```bash
-python text_to_excel.py --debug --input "History_text\20190107-raw.txt" --dashboard "Chase_Budget_Dashboard.xlsx"
-```
 
-> Replace the input file with any statement text you’ve exported. The script will populate the dashboard with detail, monthly/yearly summaries, and balance reconciliation.
+(If no requirements.txt yet, you can install manually:)
 
----
+pip install pandas openpyxl pdfplumber
 
-## Command-line options (current)
-- `--input <path>`: raw text statement file (e.g., from bank statement export)
-- `--dashboard <path>`: output Excel workbook to create/update
-- `--debug` (optional): verbose logs while parsing
+🧩 Example Usage
+python statement_to_excel.py ^
+    --input History_text/20181106-raw.txt ^
+    --dashboard Chase_Budget_Dashboard.xlsx ^
+    --pdf Chase_history/20181106-statements-5263-.pdf ^
+    --verify-pdf --auto-adjust --debug --force
 
-*(We’ll keep this section in sync with the script’s `argparse` as we evolve.)*
+Flag	Description
+--input	Path to raw text file (from pdftotext)
+--dashboard	Target Excel workbook
+--pdf	Original PDF for verification
+--verify-pdf	Run pdfplumber-based band verification
+--auto-adjust	Trim text based on detected section boundaries
+--force	Overwrite existing month data in Excel
+--debug	Generate .tsv debug output
+📁 Project Structure
+statement_to_excel/
+├── statement_to_excel.py
+├── verifiers/
+│   ├── pdf_plumber_verify.py
+│   └── pdf_page_cuts.py
+├── Chase_Budget_Dashboard.xlsx
+├── History_text/
+│   ├── 20181106-raw.txt
+│   └── ...
+└── debug_band_lines.txt
 
----
+🧮 Versioning
 
-## Features
+Git tags serve as traceable checkpoints for each stable release.
+Current baseline: v0.10.6 (cleanup + verification improvements).
 
-- Robust text->structured ingest for bank statements (Chase first; others can be added)
-- Writes a single Excel dashboard with:
-  - **Detail** sheet (canonical transaction table)
-  - **Monthly summary** (pivot)
-  - **Yearly summary** (pivot)
-  - **Balance reconciliation** (validated in v0.10 with corrected sign handling)
+Example local output:
 
-### Roadmap / Open items
-- Split Deposits into subcategories: **Payroll**, **Transfer In**, **Check Deposit**, **Return**
-- Replace post-load dedupe with a **load-once guard** (avoid accidental double-ingest)
-- Add unit tests for parsers and reconciliation math
-- Optional parsers for additional institutions (Chase vs others)
-- Configurable category rules
+Version # v0.10.6-1-gbea0d6e-dirty
 
----
 
-## Development
+Tagging a new version:
 
-### Conventions
-- Use `dev` branch for WIP; keep `main` green.
-- Tag releases: `v0.10`, `v0.11`, …
-- Prefer LF line endings across the repo. Windows-compatible scripts can use CRLF—see `.gitattributes` below.
+git tag -a v0.10.7 -m "Stable post-cleanup version"
+git push origin v0.10.7
 
-### Line endings (Windows vs. LF)
-This project includes a `.gitattributes` that enforces LF by default and CRLF for Windows-only scripts like `.ps1`. VS Code handles LF fine on Windows.
+🧰 Development Notes
 
-If you prefer Windows-style locally while keeping LF in commits:
-```bash
-git config core.autocrlf true
-```
+.gitignore excludes .tsv debug outputs
 
-### VS Code debug
-A sample `launch.json` is provided to run the script with your usual arguments.
+PDF clipping handled by verifiers/pdf_plumber_verify.py
 
----
+Automatic Savings detection uses both geometry and section context
 
-## Troubleshooting
+git describe used for version embedding into Excel output
 
-**Curl/Download TLS errors on Windows (Schannel/CRL/OCSP):**  
-Use PowerShell’s `Invoke-WebRequest`, or paste the file manually. For one-off trusted fetches, `curl -k` works but skips verification (not recommended).
+🏁 Roadmap
 
-**Git Bash vs PowerShell:**  
-Git commands are the same. Only venv activation differs:
-- PowerShell: `.\.venv\Scripts\Activate.ps1`
-- Git Bash: `source .venv/Scripts/activate`
+ Add separate Savings worksheet
 
-**LF→CRLF warnings:**  
-Harmless. The included `.gitattributes` establishes a consistent policy; you can also run:
-```bash
-git add --renormalize .
-```
+ Integrate automatic Ingest Log updates
 
----
+ Build yearly spending rollup dashboard
 
-## Example Git workflow
+ Add CLI summary flag (--summary-only)
 
-```bash
-# First commit
-git add .
-git commit -m "chore: initial project scaffold"
-git tag -a v0.10 -m "Working balance recon (fix sign) v10"
-git push -u origin main --tags
+📜 License
 
-# Work on dev
-git checkout -b dev
-# ... make changes ...
-git commit -m "feat: deposit subcategories (payroll, transfer, check, return)"
-git push -u origin dev
-```
+MIT License © 2025 Chris Erickson
+
+Maintainer: @cjerickson3
+
+Budget Building Project — Continuous refinement of Chase statement ingestion and budget analysis.
+
 
 ---
 
-## License
-Proprietary (default). If you want this open source, add an OSI-approved LICENSE (MIT/Apache-2.0/BSD-3-Clause).
+Would you like me to also generate a matching **`requirements.txt`** and a short **`setup_instructions.md`** (for collaborators or future automation)?  
+They’d fit naturally alongside this README.
